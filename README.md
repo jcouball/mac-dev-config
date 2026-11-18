@@ -935,7 +935,7 @@ tart create --from-ipsw=latest --disk-size 100 neuromancer-base
 tart set neuromancer-base --cpu 6 --memory 8192 \
                           --display 1280x800 --display-refit
 
-ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_neuromancer_cert \
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_neuromancer_certvm \
   -C 'neuromancer-config certification VM'
 
 tart run neuromancer-base
@@ -964,7 +964,7 @@ miserable and error-prone. Boot the base image with this repo's
 `certification/` directory shared in:
 
 ```bash
-cp ~/.ssh/id_ed25519_neuromancer_cert.pub certification/
+cp ~/.ssh/id_ed25519_neuromancer_certvm.pub certification/
 tart run --dir=cert:"$PWD/certification":ro neuromancer-base
 ```
 

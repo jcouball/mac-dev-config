@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-PUBKEY_NAME="${PUBKEY_NAME:-id_ed25519_neuromancer_cert.pub}"
+PUBKEY_NAME="${PUBKEY_NAME:-id_ed25519_neuromancer_certvm.pub}"
 SHARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log()  { printf '\n\033[1m>> %s\033[0m\n' "$*"; }
