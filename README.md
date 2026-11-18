@@ -14,7 +14,7 @@ nothing here needs a conditional.
 | Host | Neuromancer — Apple M2 Max, macOS Golden Gate 27.0.1 |
 | Shell | zsh + powerlevel10k |
 | Terminal | Warp (installed by `.Brewfile`; its settings cannot be versioned) |
-| Package manager | Homebrew — 83 formulae, 37 casks, 49 VS Code extensions, 14 App Store apps |
+| Package manager | Homebrew — 83 formulae, 38 casks, 49 VS Code extensions, 14 App Store apps |
 | Runtimes | asdf, 5 tools |
 | Rebuild | **certified** 2026-10-14 on a clean VM, except the App Store layer |
 
@@ -75,6 +75,7 @@ Afterwards, by hand — the parts a script cannot do:
    [Deliberately not managed](#deliberately-not-managed).
 2. **Sign in to 1Password** and enable its CLI integration, if you use the
    `op`-templated files — see [Secrets](#secrets).
+3. **Sign in to Telegram** by scanning its QR code from the phone app.
 
 ### Why three commands and not one
 
@@ -487,7 +488,7 @@ LICENSE.txt                        MIT (ignored)
 .chezmoiignore                     keeps the four above out of the home directory
 .gitattributes                     * text=auto eol=lf
 
-dot_Brewfile                       84 formulae, 37 casks, 49 extensions, 14 App Store apps
+dot_Brewfile                       83 formulae, 38 casks, 49 extensions, 14 App Store apps
 dot_tool-versions                  the five pinned runtimes
 dot_default-npm-packages           replayed on every new Node install
 dot_asdfrc                         asdf behaviour
