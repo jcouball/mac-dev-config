@@ -237,6 +237,8 @@ cask "silnite"
 cask "slack"
 # Sync and backup service to Synology NAS drives
 cask "synology-drive"
+# Desktop client for Telegram messenger
+cask "telegram-desktop"
 # Customizable email client
 cask "thunderbird"
 # Configurable document editor that supports Markdown
