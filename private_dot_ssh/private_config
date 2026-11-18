@@ -14,6 +14,18 @@ Host sophon
   ControlPath ~/.ssh/cm-%r@%h:%p
   ControlPersist 10m
 
+Host rama
+  User james
+  IdentityFile ~/.ssh/id_ed25519_rama
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  ForwardAgent no
+  UseKeychain yes
+  AddKeysToAgent yes
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+
 Host 192.168.2.1
   User root
   IdentityFile ~/.ssh/id_rsa_proxmox_admin
