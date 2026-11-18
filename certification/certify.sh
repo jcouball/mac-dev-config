@@ -45,7 +45,7 @@ CERT_USER="${CERT_USER:-certuser}"
 # A dedicated, passphrase-less key. Passphrase-less because certify.sh runs
 # unattended over BatchMode SSH; dedicated because the alternative is handing a
 # throwaway VM a key that also opens something real.
-CERT_SSH_KEY="${CERT_SSH_KEY:-$HOME/.ssh/id_ed25519_neuromancer_cert}"
+CERT_SSH_KEY="${CERT_SSH_KEY:-$HOME/.ssh/id_ed25519_neuromancer_certvm}"
 REPO="${NEUROMANCER_CONFIG_REPO:-jcouball/neuromancer-config}"
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-300}"
 
