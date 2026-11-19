@@ -43,5 +43,12 @@
     command = "plutil"
     args = ["-convert", "xml1", "-o", "-"]
 
+# Leave always-run scripts out of `chezmoi status`. A run_ script has no "done"
+# state, so script 99 would show as ` R` after every apply, and a clean machine
+# would never have an empty status. Onchange scripts still show when they are
+# pending.
+[status]
+    exclude = ["always"]
+
 [data]
     computerName = {{ $computerName | quote }}
