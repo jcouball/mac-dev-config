@@ -60,6 +60,8 @@ brew "double-conversion"
 brew "fastfetch"
 # Fast Lexical Analyzer, generates Scanners (tokenizers)
 brew "flex"
+# XML-based font configuration API for X Windows
+brew "fontconfig"
 # GNU database manager
 brew "gdbm"
 # Toolkit for image loading and pixel buffer manipulation
@@ -200,7 +202,8 @@ cask "displays"
 cask "docker-desktop"
 # Window previews and controls
 cask "dockmate"
-cask "font-monaspace"
+cask "font-fira-code"
+cask "font-meslo-for-powerlevel10k"
 # Git client for simultaneous branches on top of your existing workflow
 cask "gitbutler"
 # Native client for GitHub Copilot

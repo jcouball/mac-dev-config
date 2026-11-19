@@ -425,8 +425,8 @@ else
   bad "Warp not installed" "declared as a cask in .Brewfile"
 fi
 
-# Warp keeps its settings in a binary SQLite database, so there is nothing to
-# verify beyond the app being present -- see "Deliberately not managed".
+# This repo does not manage Warp's settings, so there is nothing to verify
+# beyond the app being present -- see "Deliberately not managed".
 
 # --- Identity --------------------------------------------------------------
 

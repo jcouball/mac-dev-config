@@ -13,8 +13,8 @@ nothing here needs a conditional.
 | --- | --- |
 | Host | Neuromancer — Apple M2 Max, macOS Golden Gate 27.0.1 |
 | Shell | zsh + powerlevel10k |
-| Terminal | Warp (installed by `.Brewfile`; its settings cannot be versioned) |
-| Package manager | Homebrew — 82 formulae, 38 casks, 49 VS Code extensions, 14 App Store apps |
+| Terminal | Warp (installed by `.Brewfile`; its settings are not managed here) |
+| Package manager | Homebrew — 83 formulae, 39 casks, 49 VS Code extensions, 14 App Store apps |
 | Runtimes | asdf, 5 tools |
 | Rebuild | **certified** 2026-10-14 on a clean VM, except the App Store layer |
 
@@ -68,11 +68,12 @@ picked up later with `brew bundle --file="$HOME/.Brewfile"`.
 
 Afterwards, by hand — the parts a script cannot do:
 
-1. **Redo Warp's settings.** Warp is installed by `.Brewfile`, but it keeps its
-   configuration in a binary SQLite database with no file to version, so a
-   rebuilt machine gets the application and none of your setup. This is the
-   single largest thing a rebuild does not restore — see
-   [Deliberately not managed](#deliberately-not-managed).
+1. **Redo Warp's settings.** Warp is installed by `.Brewfile`, but this repo
+   does not manage its settings. Sign in to Warp, and its own Settings Sync
+   brings back the settings it carries. The terminal font is not one of them:
+   Warp keeps it on the device, so a rebuilt machine starts with Warp's default
+   font. Set Terminal font to `MesloLGS NF` under Settings, Appearance, Text —
+   see [Deliberately not managed](#deliberately-not-managed).
 2. **Sign in to 1Password** and enable its CLI integration, if you use the
    `op`-templated files — see [Secrets](#secrets).
 3. **Sign in to Telegram** by scanning its QR code from the phone app.
@@ -488,7 +489,7 @@ LICENSE.txt                        MIT (ignored)
 .chezmoiignore                     keeps the four above out of the home directory
 .gitattributes                     * text=auto eol=lf
 
-dot_Brewfile                       82 formulae, 38 casks, 49 extensions, 14 App Store apps
+dot_Brewfile                       83 formulae, 39 casks, 49 extensions, 14 App Store apps
 dot_tool-versions                  the five pinned runtimes
 dot_default-npm-packages           replayed on every new Node install
 dot_asdfrc                         asdf behaviour
@@ -574,8 +575,8 @@ bash files exist because scripts and older tooling still land in bash, not
 because anything is run there interactively.
 
 **Warp is the terminal.** It is declared as a cask in `.Brewfile`, so a rebuild
-installs it — but its settings live in a binary SQLite database and cannot be
-versioned, so a rebuild does not restore them.
+installs it — but this repo does not manage its settings, so a rebuild restores
+only what Warp's own Settings Sync carries.
 
 That is a real cost, and it was accepted deliberately. This repo previously
 carried an iTerm2 preferences plist, and iTerm2's settings *can* be versioned —
@@ -1054,11 +1055,13 @@ unreachable objects, so the old commit may remain fetchable by SHA afterwards.
 ## Deliberately not managed
 
 - **Secrets and keys.** 1Password holds them; `op` reads them at render time.
-- **Warp's settings** — not by choice, and the biggest gap in a rebuild. Warp
-  keeps them in a binary SQLite database with no config file to version, so the
-  application comes back and your setup does not. Nothing here can fix that; the
-  only mitigation is knowing it in advance, which is why it is step one of the
-  by-hand list in [Rebuild from nothing](#rebuild-from-nothing).
+- **Warp's settings.** Warp writes them to `~/.warp/settings.toml` and carries
+  some of them between devices with its own Settings Sync, but not the terminal
+  font. The file is not managed here: Warp is being replaced by another
+  terminal, and whether Warp reads a restored `settings.toml` on a fresh machine
+  has not been tested. A rebuild brings back the application and whatever
+  Settings Sync carries; the rest is step one of the by-hand list in
+  [Rebuild from nothing](#rebuild-from-nothing).
 - **VS Code settings** (as opposed to the extension list). Settings Sync owns
   those; the Brewfile owns which extensions are installed.
 - **macOS system preferences.** No `defaults write` bank here. They are
