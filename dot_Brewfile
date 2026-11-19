@@ -138,8 +138,6 @@ brew "openjdk"
 brew "pandoc"
 # PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
-# Object-relational database system
-brew "postgresql@17", restart_service: :changed
 # Theme for zsh
 brew "powerlevel10k"
 # Code formatter for JavaScript, CSS, JSON, GraphQL, Markdown, YAML
