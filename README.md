@@ -578,14 +578,6 @@ because anything is run there interactively.
 installs it — but this repo does not manage its settings, so a rebuild restores
 only what Warp's own Settings Sync carries.
 
-That is a real cost, and it was accepted deliberately. This repo previously
-carried an iTerm2 preferences plist, and iTerm2's settings *can* be versioned —
-which was a genuine argument for it as the primary terminal. The argument lost
-to preferring Warp day to day. What the repo cannot do is manage the settings of
-a terminal you do not use: that plist was for an application that was not
-installed and not declared anywhere, and it survived only because a stale
-`com.googlecode.iterm2` defaults domain made it look live.
-
 ### Which zsh file, and why
 
 This is the part that is easy to get wrong, because the three files are sourced
@@ -743,7 +735,6 @@ recovery path you would only exercise under pressure.
 | `provision.sh` (since removed) skipped the apply entirely if `~/.local/share/chezmoi` existed | a second run was never needed, because the first had never failed |
 | `wait_for_icloud_login` looped forever with no timeout | a human was always sitting there to sign in |
 | `provision.sh --unattended` (since removed) refused to start on a correctly configured machine, because it probed with `sudo -n -v` | never run unattended; interactively `sudo -v` is correct, and the difference only shows up under NOPASSWD, where there is no credential to cache |
-| An iTerm2 preferences plist was managed for an application that was not installed and not declared | a leftover `com.googlecode.iterm2` defaults domain still answered `defaults read`, so the config looked live long after the app was gone |
 | **`graalvm/tap` could not be tapped at all**: current Homebrew rejects it with "invalid syntax in tap!", and `brew bundle check` failed on it. Nothing in `.Brewfile` came from it | the tap was cloned years ago, and Homebrew does not re-validate a tap that is already there |
 | tart's formula in the abandoned `cirruslabs/cli` tap stopped loading on current Homebrew, so `brew bundle dump` silently dropped tart from `.Brewfile`. Tart now comes from `openai/tools` | tart was still installed and still ran; only the dump's diff showed the missing line |
 

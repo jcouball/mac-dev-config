@@ -35,9 +35,9 @@
     args = ["--wait"]
 
 # Render binary plists as XML so `chezmoi diff` is readable rather than a wall
-# of bytes. Nothing managed is a plist today -- iTerm2's was the last one -- but
-# this costs nothing and is exactly the sort of setting that is painful to
-# rediscover the moment a plist comes back.
+# of bytes. Nothing managed is a plist today, but this costs nothing and is
+# exactly the sort of setting that is painful to rediscover the moment a plist
+# comes back.
 [[textconv]]
     pattern = "**/*.plist"
     command = "plutil"
