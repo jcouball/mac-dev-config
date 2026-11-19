@@ -37,6 +37,34 @@ fi
 
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
+# Stop if the Command Line Tools are missing or broken.
+#
+# This is the one failure here that is fatal, because nothing below it can
+# work without them: any formula that builds from source fails, and asdf
+# compiles the runtimes in script 04 with the same tools.
+#
+# Both halves of the test are needed. A CLT directory with no package receipt
+# is what Homebrew reports as "Your Command Line Tools (CLT) does not support
+# macOS NN": it cannot read a version, so it treats the tools as outdated. That
+# state broke tart, which builds from source, and because `brew bundle`
+# installs everything missing as one batch, tart's failure took six casks down
+# with it. `softwareupdate` offered no update, so reinstalling is the fix.
+if ! xcode-select -p >/dev/null 2>&1 \
+   || ! pkgutil --pkg-info=com.apple.pkg.CLTools_Executables >/dev/null 2>&1; then
+  # Xcode.app can stand in for the CLT, and has no CLT receipt of its own.
+  case "$(xcode-select -p 2>/dev/null)" in
+    *.app/Contents/Developer) ;;
+    *)
+      echo "❌ The Command Line Tools are missing or broken." >&2
+      echo "   Homebrew cannot build from source without them. Reinstall:" >&2
+      echo "     sudo rm -rf /Library/Developer/CommandLineTools" >&2
+      echo "     xcode-select --install" >&2
+      echo "   Wait for the installer to finish, then:  sudo -v && chezmoi apply" >&2
+      exit 1
+      ;;
+  esac
+fi
+
 # Install what is missing; do not upgrade what is already here.
 #
 # `brew bundle` upgrades outdated packages by default, which quietly turned
@@ -73,8 +101,8 @@ mas_count=$(printf '%s' "$mas_ids" | wc -w | tr -d ' ')
 # Rust -- from a video conferencing app.
 #
 # A partial failure must not stop the layers below it. What is missing is not
-# hidden: verify.sh runs `brew bundle check` and fails on anything absent, which
-# is the right place to judge -- outcomes, not exit codes.
+# hidden: script 99 runs `brew bundle check` after everything else and fails
+# the apply on anything absent, and verify.sh does the same for certification.
 # Clear Homebrew's quarantine flag from Warp, the terminal you open next.
 #
 # An EXIT trap, so it runs after whichever install attempt is last: pass 2
@@ -109,7 +137,7 @@ else
     echo "!! Some Brewfile entries failed twice." >&2
     echo "!! Continuing: the runtimes below matter more than any single package," >&2
     echo "!! and aborting here would leave this machine with no Ruby or Node at all." >&2
-    echo "!! Run 'certification/verify.sh' to see exactly what is missing." >&2
+    echo "!! Script 99 names what is missing and fails the apply at the end." >&2
   fi
 fi
 

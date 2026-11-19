@@ -519,6 +519,7 @@ dot_claude/CLAUDE.md               Claude Code: global communication preferences
   run_onchange_after_04_asdf_tool_install.sh.tmpl                  the runtimes themselves
   run_onchange_after_05_link_openjdk.sh.tmpl                       makes Homebrew's openjdk visible to macOS
   run_onchange_after_06_install_amphetamine_power_protect.sh.tmpl  Amphetamine Power Protect, laptops only
+  run_after_99_brew_bundle_check.sh                                fails the apply if a .Brewfile entry is missing
 
 certification/
   certify.sh                       host side: clone a VM, rebuild it, verify it

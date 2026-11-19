@@ -88,7 +88,12 @@ section "chezmoi"
 if command -v chezmoi >/dev/null 2>&1; then
   ok "chezmoi installed ($(chezmoi --version | awk '{print $3}' | tr -d ,))"
 
-  status_out="$(chezmoi status 2>&1)"
+  # Always-run scripts are excluded: script 99 is pending after every apply, so
+  # it would read as drift on a clean machine. The flag is passed here, although
+  # .chezmoi.toml.tmpl sets the same thing, so this check does not depend on the
+  # machine's config having been regenerated. Changed files and pending onchange
+  # scripts still show.
+  status_out="$(chezmoi status --exclude=always 2>&1)"
   if [ -z "$status_out" ]; then
     ok "chezmoi status is empty (no drift)"
   else
