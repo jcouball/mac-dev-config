@@ -14,7 +14,7 @@ nothing here needs a conditional.
 | Host | Neuromancer — Apple M2 Max, macOS Golden Gate 27.0.1 |
 | Shell | zsh + powerlevel10k |
 | Terminal | Warp (installed by `.Brewfile`; its settings cannot be versioned) |
-| Package manager | Homebrew — 83 formulae, 38 casks, 49 VS Code extensions, 14 App Store apps |
+| Package manager | Homebrew — 82 formulae, 38 casks, 49 VS Code extensions, 14 App Store apps |
 | Runtimes | asdf, 5 tools |
 | Rebuild | **certified** 2026-10-14 on a clean VM, except the App Store layer |
 
@@ -488,7 +488,7 @@ LICENSE.txt                        MIT (ignored)
 .chezmoiignore                     keeps the four above out of the home directory
 .gitattributes                     * text=auto eol=lf
 
-dot_Brewfile                       83 formulae, 38 casks, 49 extensions, 14 App Store apps
+dot_Brewfile                       82 formulae, 38 casks, 49 extensions, 14 App Store apps
 dot_tool-versions                  the five pinned runtimes
 dot_default-npm-packages           replayed on every new Node install
 dot_asdfrc                         asdf behaviour
@@ -704,8 +704,9 @@ Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
 Rosetta check). The count changes as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
-The two exclusions are the three things an Apple Silicon VM structurally cannot
-do — the 14 App Store apps, `zoom`, and `postgresql@17`'s service. They are
+The two exclusions are the things an Apple Silicon VM structurally cannot
+do — the 14 App Store apps and `zoom`. (`postgresql@17`'s service was a third
+until the formula was removed from `.Brewfile`.) They are
 reported as `SKIP`, never `WARN`: a warning you are expected to ignore on every
 run teaches you to ignore warnings, which is the same argument this README makes
 about false chezmoi drift. `WARN` means look at it; `SKIP` means a declared,
@@ -812,8 +813,8 @@ not evidence; positive proof of completion is.**
 A certified run proves the **procedure** works. It does not promise the next
 rebuild produces the same machine, and it is worth being clear about why.
 
-**Almost nothing is version-pinned.** Two entries in `.Brewfile` carry a version
-in the formula *name* — `openssl@3`, `postgresql@17` — and that is all. The
+**Almost nothing is version-pinned.** One entry in `.Brewfile` carries a version
+in the formula *name* — `openssl@3` — and that is all. The
 other 119 install whatever is current on the day. Only `.tool-versions` pins
 exactly, which is the point: versions matter for the runtimes a project builds
 against, and not for `ripgrep`. A rebuild next month gives a working machine
@@ -868,14 +869,13 @@ itself so there is no second list to drift. `verify.sh` reports them as a
 warning rather than silently passing over them. **They must be checked on real
 hardware.**
 
-Two more entries turned out to be structurally impossible in a VM, and are
+One more entry turned out to be structurally impossible in a VM, and is
 named individually in `verify.sh` rather than waved away — an exception you
 cannot enumerate is indistinguishable from a bug you have stopped noticing:
 
 | Entry | Why a VM cannot do it |
 | --- | --- |
 | **zoom** | The installer package's postinstall scripts fail. `installer` reports "An error occurred while running scripts from the package". It installs fine on real hardware. |
-| **postgresql@17** | `restart_service` needs a GUI launchd domain. Over SSH there is no Aqua session, so `launchctl enable gui/501/homebrew.mxcl.postgresql@17` exits 125 with "Domain does not support specified action". |
 
 Zoom is worth a note of its own: it does not merely fail, it **hangs first**. The
 postinstall script launches `ZoomUpdater`, which waits on a GUI session that will

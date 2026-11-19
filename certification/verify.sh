@@ -152,12 +152,9 @@ if [ -f "$BREWFILE" ]; then
   # stopped noticing.
   #
   #   zoom            its installer package's postinstall scripts fail in a VM
-  #   postgresql@17   `restart_service` needs a GUI launchd domain (gui/501),
-  #                   which does not exist over SSH: launchctl exits 125 with
-  #                   "Domain does not support specified action"
   #
-  # Both install and work on real hardware; neither can be proven here.
-  vm_exceptions='zoom postgresql@17'
+  # It installs and works on real hardware; that cannot be proven here.
+  vm_exceptions='zoom'
 
   if printf '%s\n' "$check_out" | grep -q "dependencies are satisfied"; then
     ok "brew bundle check satisfied$([ "$SKIP_MAS" = 1 ] && echo " (excluding $mas_count App Store apps)")"
