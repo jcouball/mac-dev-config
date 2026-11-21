@@ -587,12 +587,19 @@ in different circumstances and by different kinds of shell:
 | --- | --- | --- |
 | `.zshenv` | **every** zsh, including non-interactive ones | `JAVA_HOME`, `path_helper`. Things a script invoked by an app must see. |
 | `.zprofile` | login shells | Homebrew's `shellenv`, asdf's shims, `~/.local/bin`. |
-| `.zshrc` | interactive shells | The prompt, completions, aliases, options. |
+| `.zshrc` | interactive shells | The prompt, completions, aliases, options. Runs `brew shellenv` again and then puts asdf's shims back in front of it. |
 
 asdf is initialised in `.zprofile` rather than `.zshrc` deliberately: a
 non-interactive shell — a git hook, a `Makefile`, an editor task — never reads
 `.zshrc`, and without the shims on `PATH` it gets the system Ruby instead of the
 pinned one, which fails in confusing ways much later.
+
+`.zshrc` still has to touch `PATH`, for two reasons. `path_helper` in `.zshenv`
+moves the system directories to the front in every zsh, so `.zshrc` runs
+`brew shellenv` again to put Homebrew back ahead of them. That in turn puts
+Homebrew ahead of the shims, so the next line prepends the shims again. Without
+it, `python3` is Homebrew's copy, installed as a dependency of other formulae,
+and not the version pinned in `.tool-versions`.
 
 **Everything that touches Homebrew or the Command Line Tools is guarded.** Those
 files are written by chezmoi during the very first apply, *before* Homebrew and

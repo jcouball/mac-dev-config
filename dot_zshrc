@@ -12,6 +12,10 @@ export PATH="$HOME/bin:$PATH"
 # provisioning run, before Homebrew exists, does not error on every start.
 [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
 
+# brew shellenv just put Homebrew first. Keep the asdf shims ahead of it so that
+# asdf's runtimes win over any copy Homebrew installed as a dependency.
+[[ -n "$ASDF_DATA_DIR" ]] && export PATH="$ASDF_DATA_DIR/shims:$PATH"
+
 # Load Cargo (Rust) environment if installed
 [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
 
