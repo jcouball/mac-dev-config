@@ -341,6 +341,26 @@ case "$login_path" in
   *) bad "asdf shims not on PATH in a login shell" ;;
 esac
 
+# An interactive login shell, because that is what a terminal opens. It reads
+# .zprofile, where the shims are first added, and then .zshrc, which every
+# interactive shell reads, login or not. The check above cannot see what .zshrc
+# does to PATH: zsh -lc is not interactive, so it never reads it. And the
+# command -v loop under Runtimes runs in this script's own shell, which put the
+# shims first itself.
+#
+# python3 is the probe because Homebrew links one, as a dependency of other
+# formulae, so it is the name that goes wrong when .zshrc leaves Homebrew ahead
+# of the shims. Run through `script` for the pty, as interactive_noise is below.
+interactive_python3="$(script -q /dev/null zsh -lic 'printf "python3=%s\n" "$(command -v python3)"' </dev/null 2>&1 \
+  | tr -d '\r' \
+  | sed -n 's/.*python3=//p' \
+  | tail -1)"
+case "$interactive_python3" in
+  "$ASDF_DATA_DIR"/shims/*) ok "python3 resolves through asdf shims in an interactive login shell" ;;
+  "") bad "python3 not on PATH in an interactive login shell" ;;
+  *)  bad "python3 resolves to $interactive_python3 in an interactive login shell" "expected an asdf shim" ;;
+esac
+
 # An interactive shell must start without spraying errors -- the guards added to
 # .zshrc exist precisely so that a partly-provisioned machine stays usable.
 #
