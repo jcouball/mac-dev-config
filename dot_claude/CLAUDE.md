@@ -47,10 +47,13 @@
 
 ### Rubies and gems on sophon
 
-- `mise` is not on the PATH in an ssh session. Call it by full path:
-  `$env:LOCALAPPDATA\Microsoft\WinGet\Packages\jdx.mise_Microsoft.Winget.Source_8wekyb3d8bbwe\mise\bin\mise.exe`.
-  `mise ls ruby` lists the installed Rubies.
-- Call a Ruby by full path too:
+- `mise` is on the PATH in an ssh session: sophon-config keeps its `bin`
+  folder on the user PATH. `mise ls ruby` lists the installed Rubies. If
+  `mise` is ever not found, a winget upgrade has dropped the entry; call it
+  by full path,
+  `$env:LOCALAPPDATA\Microsoft\WinGet\Packages\jdx.mise_Microsoft.Winget.Source_8wekyb3d8bbwe\mise\bin\mise.exe`,
+  and tell me.
+- Call a Ruby by full path, to pick the version:
   `$env:LOCALAPPDATA\mise\installs\ruby\<version>\bin\ruby.exe`. When a
   run starts child `ruby` processes (rspec does), put that `bin`
   directory first on `$env:PATH` so the children use the same version.
