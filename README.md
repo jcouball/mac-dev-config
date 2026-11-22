@@ -378,7 +378,50 @@ asked that question.
 That clones the pristine base VM, boots it, runs the bootstrap **unmodified**
 from this README's URL, and then verifies. Transcripts land in
 `certification/logs/` — without a log, failures have to be inferred from
-wreckage.
+wreckage. The bootstrap log ends with the commit and the tree the VM built, and
+a copy of the `verify.sh` that checked the VM is kept beside the logs.
+
+`certify.sh` certifies `main` unless told otherwise. To certify a change before
+it merges, name its branch:
+
+```bash
+./certification/certify.sh --branch <branch>
+```
+
+The VM clones the branch from GitHub, and `verify.sh` comes from the local
+checkout, copied at the start of the run. So the script stops before booting
+the VM unless all three of these hold:
+
+- the branch is pushed,
+- the local checkout is at the commit the branch has on GitHub, and
+- `certification/verify.sh` has no uncommitted changes.
+
+Put the commit, the tree, and the verdict the run prints in the pull request.
+
+A passing branch run certifies the merged commit only when the tree on `main`
+after the merge is the tree the VM built. This repo allows rebase merges only,
+and a rebase merge gives the commits new SHAs, so the commit on `main` is never
+the commit the VM built. The tree is the same when the branch contained `main`'s
+tip and nothing else landed in between. The run says whether the branch contains
+`main`'s tip, which tells you what to expect. The comparison is what decides.
+Right after the merge, compare by hand:
+
+```bash
+git fetch origin
+git rev-parse 'origin/main^{tree}'
+```
+
+The commit to compare is the pull request's last commit as it landed on `main`.
+If something else has landed since, put that commit's SHA in place of
+`origin/main`.
+
+- **The trees match.** The branch run is the VM result for that `main` commit.
+- **The trees differ.** Certify `main`.
+
+A branch run gives the VM result only. The real-hardware half still happens
+after the merge is applied to this Mac: run `verify.sh` here, then record both
+results against the `main` commit in
+[The certified run](#the-certified-run), in one follow-up commit.
 
 Verify **outcomes, not exit codes**. A script returning zero has proved nothing;
 that is the entire argument of [Certification](#certification), and it is why

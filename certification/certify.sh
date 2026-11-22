@@ -10,15 +10,16 @@
 # in the README for how to build one. Nothing here touches your real Mac.
 #
 # Usage:
-#   ./certification/certify.sh                 # full run against a fresh clone
-#   ./certification/certify.sh --verify-only   # re-run checks on the live cert VM
-#   ./certification/certify.sh --keep          # do not delete a previous cert VM
+#   ./certification/certify.sh                  # full run of main, from a fresh clone
+#   ./certification/certify.sh --branch <name>  # full run of a pushed branch, before it merges
+#   ./certification/certify.sh --verify-only    # re-run checks on the live cert VM
+#   ./certification/certify.sh --keep           # do not delete a previous cert VM
 #
-# THE THREE DEVIATIONS
+# THE DEVIATIONS
 #
 # The point of certification is to run what the README says, not a convenient
-# variant, so deviations have to be named. There are exactly three, all forced
-# by the platform rather than chosen:
+# variant, so deviations have to be named. Every run has exactly three, all
+# forced by the platform rather than chosen. A pre-merge run has a fourth:
 #
 #   1. --promptString  There is no human at the VM's console to answer chezmoi's
 #                      one question, so the machine name is supplied up front.
@@ -32,6 +33,13 @@
 #                      run for minutes at 0% CPU before erroring. Skipping it
 #                      buys back that time. verify.sh still names zoom as an
 #                      unverified entry, so it cannot be quietly forgotten.
+#   4. --branch <name> Only in a run started with --branch. The README's
+#                      command clones main; this one makes chezmoi clone the
+#                      named branch, so a change to the bootstrap path can be
+#                      certified before it merges. Without it the only way to
+#                      certify a change is to merge it first. "Re-certify the
+#                      rebuild" in the README says when such a run counts for
+#                      the merged commit.
 #
 # Everything else runs exactly as the README publishes it. There is no deviation
 # for staleness any more: chezmoi clones over git, which has no cache, so what
@@ -54,16 +62,48 @@ LOG_DIR="${LOG_DIR:-$SCRIPT_DIR/logs}"
 
 VERIFY_ONLY=0
 KEEP_OLD=0
+BRANCH=""
+BRANCH_GIVEN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --verify-only) VERIFY_ONLY=1 ;;
     --keep) KEEP_OLD=1 ;;
-    --help|-h) sed -n '2,38p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
+    --branch)
+      [ $# -ge 2 ] || { echo "--branch needs a branch name" >&2; exit 64; }
+      BRANCH="$2"
+      BRANCH_GIVEN=1
+      shift
+      ;;
+    --help|-h) sed -n '2,46p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
   esac
   shift
 done
+
+# The branch name is pasted into a command that runs in the guest, so only the
+# characters a branch name can have are let in. The class is written out
+# because this runs under /bin/bash 3.2, where \w cannot be relied on, and the
+# locale is pinned because a range like A-Z can take in other letters outside C.
+valid_branch_name() {
+  local LC_ALL=C
+  local pattern='^[A-Za-z0-9_][A-Za-z0-9_./-]*$'
+  [[ "$1" =~ $pattern ]]
+}
+
+# Checked whenever --branch was given, not only when its value is non-empty:
+# an empty name, as from an unset variable, would otherwise be read as no
+# option at all and start a full run of main.
+if [ "$BRANCH_GIVEN" -eq 1 ] && ! valid_branch_name "$BRANCH"; then
+  echo "Not a branch name: '$BRANCH'" >&2
+  exit 64
+fi
+
+# --branch main is a run of main: same clone command, same log file names.
+[ "$BRANCH" = "main" ] && BRANCH=""
+TARGET_BRANCH="${BRANCH:-main}"
+# A slash is the only character the pattern allows that a file name cannot hold.
+LOG_SUFFIX="${BRANCH:+-${BRANCH//\//-}}"
 
 # All three write to stderr. log() in particular must: wait_for_ssh's result is
 # captured with $(...), so anything it prints to stdout is captured as part of
@@ -84,12 +124,95 @@ command -v tart >/dev/null 2>&1 \
      Create one:  ssh-keygen -t ed25519 -N '' -f $CERT_SSH_KEY
      then add $CERT_SSH_KEY.pub to ~$CERT_USER/.ssh/authorized_keys in the base VM."
 
+# What the VM is about to build, asked of GitHub before anything boots.
+#
+# The guest clones $REPO from GitHub, and verify.sh is copied in from this
+# checkout. If the two are at different revisions, one revision's files are
+# tested against another revision's checks. A branch run stops on that. A run
+# of main only warns, because the run of main that certifies a change to this
+# script is made from that change's branch, before it merges.
+#
+# The URL is built from $REPO rather than taken from `origin`, because $REPO is
+# what the guest clones. The ref is spelled out in full because a bare name
+# given to ls-remote also matches refs/heads/x/<name>.
+REPO_URL="https://github.com/$REPO.git"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+EXPECTED_COMMIT=""
+MAIN_NOTE=""
+
+remote_commit() {
+  # shellcheck disable=SC2016  # awk's $1 and $2 are awk's, not the shell's.
+  printf '%s\n' "$REMOTE_REFS" | awk -v ref="refs/heads/$1" '$2 == ref { print $1 }'
+}
+
 if [ "$VERIFY_ONLY" -eq 0 ]; then
   tart list --format json | grep -q "\"$BASE_VM\"" \
     || die "Base VM '$BASE_VM' not found. See 'Certification' in the README for how to build it."
+
+  log "Asking GitHub what $TARGET_BRANCH is in $REPO..."
+  REMOTE_REFS="$(git ls-remote "$REPO_URL" "refs/heads/$TARGET_BRANCH" refs/heads/main)" \
+    || die "Could not read the branches of $REPO_URL."
+  EXPECTED_COMMIT="$(remote_commit "$TARGET_BRANCH")"
+  [ -n "$EXPECTED_COMMIT" ] \
+    || die "Branch '$TARGET_BRANCH' is not on GitHub in $REPO. Push it first: the VM clones from GitHub."
+  echo "   $TARGET_BRANCH is at $EXPECTED_COMMIT" >&2
+
+  LOCAL_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  VERIFY_CHANGES="$(git -C "$REPO_ROOT" status --porcelain -- certification/verify.sh)"
+
+  if [ -n "$BRANCH" ]; then
+    [ "$LOCAL_HEAD" = "$EXPECTED_COMMIT" ] \
+      || die "This checkout is at $LOCAL_HEAD, but '$BRANCH' on GitHub is at $EXPECTED_COMMIT.
+     verify.sh comes from this checkout, so the two have to be the same commit.
+     Check out '$BRANCH' and push or pull until they match."
+    [ -z "$VERIFY_CHANGES" ] \
+      || die "certification/verify.sh has uncommitted changes.
+     The VM would build '$BRANCH' as pushed and be checked by a verify.sh that
+     is in no commit. Commit and push it, or discard the changes."
+
+    # Whether the branch contains main's tip says how likely this run is to
+    # count for the merged commit. When it does, and nothing else lands first,
+    # the tree a rebase merge puts on main is the tree built here. When it does
+    # not, the trees will usually differ, but they can still be equal, so this
+    # is a report and not a ruling: the tree comparison after the merge
+    # decides. Fetching by URL writes FETCH_HEAD and nothing else, so no local
+    # ref moves.
+    MAIN_COMMIT="$(remote_commit main)"
+    if [ -n "$MAIN_COMMIT" ] \
+        && git -C "$REPO_ROOT" fetch --quiet "$REPO_URL" refs/heads/main 2>/dev/null; then
+      if git -C "$REPO_ROOT" merge-base --is-ancestor "$MAIN_COMMIT" "$EXPECTED_COMMIT" 2>/dev/null; then
+        MAIN_NOTE="'$BRANCH' contains main's tip ($MAIN_COMMIT). If nothing else lands on main before the merge, the tree on main will be the tree built here."
+      else
+        MAIN_NOTE="'$BRANCH' does NOT contain main's tip ($MAIN_COMMIT). The tree on main after the merge will probably differ from the tree built here. The tree comparison after the merge decides whether this run counts."
+      fi
+    else
+      MAIN_NOTE="Could not tell whether '$BRANCH' contains main's tip: main could not be fetched from $REPO_URL."
+    fi
+    echo "   $MAIN_NOTE" >&2
+  else
+    [ "$LOCAL_HEAD" = "$EXPECTED_COMMIT" ] \
+      || warn "This checkout is at $LOCAL_HEAD, but main on GitHub is at $EXPECTED_COMMIT.
+   The VM builds main; verify.sh comes from this checkout."
+    [ -z "$VERIFY_CHANGES" ] \
+      || warn "certification/verify.sh has uncommitted changes. The VM is checked by a verify.sh that is in no commit."
+  fi
 fi
 
 mkdir -p "$LOG_DIR"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BOOTSTRAP_LOG="$LOG_DIR/bootstrap-$STAMP$LOG_SUFFIX.log"
+VERIFY_LOG="$LOG_DIR/verify-$STAMP$LOG_SUFFIX.log"
+
+# The verify.sh this run checks the VM with, copied now and kept beside the
+# logs. The checks above describe the checkout as it is at this moment, and
+# the VM is not verified until the bootstrap is over, many minutes later.
+# Copying verify.sh from the checkout then would use whatever is there by
+# then: an edit, or another branch checked out in the meantime, and the commit
+# this run names would be certified by another revision's checks.
+VERIFY_SNAPSHOT="$LOG_DIR/verify-$STAMP$LOG_SUFFIX.sh"
+cp "$SCRIPT_DIR/verify.sh" "$VERIFY_SNAPSHOT" \
+  || die "Could not copy verify.sh to $VERIFY_SNAPSHOT."
 
 vm_ip() { tart ip "$CERT_VM" --wait 1 2>/dev/null || true; }
 
@@ -169,18 +292,25 @@ fi
 
 # --- Run the bootstrap -----------------------------------------------------
 
-STAMP="$(date +%Y%m%d-%H%M%S)"
-BOOTSTRAP_LOG="$LOG_DIR/bootstrap-$STAMP.log"
-VERIFY_LOG="$LOG_DIR/verify-$STAMP.log"
+# Set when the commit the VM built is not known to be the one GitHub named.
+COMMIT_PROBLEM=""
+BUILT_COMMIT=""
+BUILT_TREE=""
+
+# A line for the terminal and for the end of the bootstrap log.
+note() { printf '%s\n' "$*" | tee -a "$BOOTSTRAP_LOG" >&2; }
 
 if [ "$VERIFY_ONLY" -eq 0 ]; then
   log "Running the bootstrap. Transcript: $BOOTSTRAP_LOG"
-  echo "   Certifying $REPO" >&2
+  echo "   Certifying $REPO, branch $TARGET_BRANCH" >&2
   echo "   Without a log, failures have to be inferred from wreckage." >&2
 
-  # The three commands from "Rebuild from nothing", verbatim, plus the two
-  # deviations named above. Do not "improve" them here -- the point is to test
-  # what the README says.
+  BRANCH_OPTION="${BRANCH:+--branch $BRANCH }"
+
+  # The three commands from "Rebuild from nothing", verbatim, plus the
+  # deviations named above: three in every run, and --branch in a pre-merge
+  # run. Do not "improve" them here -- the point is to test what the README
+  # says.
   #
   # NONINTERACTIVE=1 is Homebrew's own documented flag for unattended installs,
   # not a deviation: without a terminal its installer waits for a RETURN that
@@ -191,20 +321,47 @@ export SKIP_MAS=1 NONINTERACTIVE=1 HOMEBREW_BUNDLE_CASK_SKIP=zoom
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install chezmoi
-chezmoi init --apply --promptString "Computer name='"$CERT_VM"'" '"$REPO"
+chezmoi init --apply '"$BRANCH_OPTION"'--promptString "Computer name='"$CERT_VM"'" '"$REPO"
 
   if guest "$BOOTSTRAP" 2>&1 | tee "$BOOTSTRAP_LOG"; then
     log "Bootstrap exited 0."
   else
     warn "Bootstrap exited non-zero. Verifying anyway -- the exit code is not the point."
   fi
+
+  # Name what was built. The commit GitHub gave before the boot is only what
+  # the VM was expected to clone: a push during the Homebrew install changes
+  # what it gets, and without this comparison that would show nowhere.
+  BUILT="$(guest 'git -C ~/.local/share/chezmoi rev-parse HEAD "HEAD^{tree}"' 2>/dev/null || true)"
+  BUILT_COMMIT="$(printf '%s\n' "$BUILT" | sed -n '1p')"
+  BUILT_TREE="$(printf '%s\n' "$BUILT" | sed -n '2p')"
+  SHA_PATTERN='^[0-9a-f]{40}$'
+
+  note ""
+  note "== What this run built =="
+  note "Repo:   $REPO"
+  note "Branch: $TARGET_BRANCH"
+  if [[ "$BUILT_COMMIT" =~ $SHA_PATTERN ]] && [[ "$BUILT_TREE" =~ $SHA_PATTERN ]]; then
+    note "Commit: $BUILT_COMMIT"
+    note "Tree:   $BUILT_TREE"
+    if [ "$BUILT_COMMIT" != "$EXPECTED_COMMIT" ]; then
+      COMMIT_PROBLEM="The VM built $BUILT_COMMIT, but $TARGET_BRANCH was at $EXPECTED_COMMIT on GitHub when the run started. The branch moved during the run."
+    fi
+  else
+    BUILT_COMMIT=""
+    BUILT_TREE=""
+    COMMIT_PROBLEM="The commit the VM built could not be read. The bootstrap may have failed before the clone."
+  fi
+  [ -z "$COMMIT_PROBLEM" ] || note "$COMMIT_PROBLEM"
+  [ -z "$MAIN_NOTE" ] || note "$MAIN_NOTE"
 fi
 
 # --- Verify ----------------------------------------------------------------
 
 log "Verifying outcomes. Transcript: $VERIFY_LOG"
 
-# Copy the script over and run it as a file, rather than piping it to `bash -s`.
+# Copy the snapshot taken before the boot over and run it as a file, rather
+# than piping it to `bash -s`.
 #
 # Piping made stdin the script itself, so the first command inside it that read
 # stdin -- `script`, used to get a pty for the interactive-shell check -- ate the
@@ -214,7 +371,7 @@ log "Verifying outcomes. Transcript: $VERIFY_LOG"
 # managed files at all.
 scp -q -i "$CERT_SSH_KEY" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes \
-    "$SCRIPT_DIR/verify.sh" "$CERT_USER@$IP:/tmp/verify.sh" \
+    "$VERIFY_SNAPSHOT" "$CERT_USER@$IP:/tmp/verify.sh" \
   || die "Could not copy verify.sh to the VM."
 
 # set +e: the pipeline is expected to fail when verification fails, and with
@@ -234,11 +391,26 @@ if ! grep -q '^VERIFY-COMPLETE' "$VERIFY_LOG"; then
   VERIFY_STATUS=1
 fi
 
+# Passing every check certifies nothing if the commit that passed is unknown or
+# is not the one this run set out to build.
+if [ -n "$COMMIT_PROBLEM" ]; then
+  VERIFY_STATUS=1
+fi
+
 echo
 if [ "$VERIFY_STATUS" -eq 0 ]; then
   printf '\033[32m✅ CERTIFIED\033[0m -- %s rebuilt from nothing and passed every check.\n' "$CERT_VM"
 else
   printf '\033[31m❌ NOT CERTIFIED\033[0m -- see %s\n' "$VERIFY_LOG"
+  [ -z "$COMMIT_PROBLEM" ] || printf '   %s\n' "$COMMIT_PROBLEM"
+fi
+
+if [ "$VERIFY_ONLY" -eq 0 ] && [ -n "$BUILT_COMMIT" ]; then
+  printf '   Branch: %s\n   Commit: %s\n   Tree:   %s\n' "$TARGET_BRANCH" "$BUILT_COMMIT" "$BUILT_TREE"
+fi
+if [ -n "$MAIN_NOTE" ]; then
+  printf '   %s\n' "$MAIN_NOTE"
+  printf '   Put the commit, the tree and the verdict in the pull request.\n'
 fi
 
 cat <<EOF
@@ -246,7 +418,7 @@ cat <<EOF
 The VM is left running so you can inspect it:
 
   ssh -i $CERT_SSH_KEY $CERT_USER@$IP
-  ./certification/certify.sh --verify-only   # re-check without rebuilding
+  ./certification/certify.sh --verify-only${BRANCH:+ --branch $BRANCH}   # re-check without rebuilding
   tart stop $CERT_VM && tart delete $CERT_VM # when you are done
 
 Record anything this found in the Certification section of the README. A defect
