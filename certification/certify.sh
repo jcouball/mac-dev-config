@@ -280,10 +280,14 @@ log "VM reachable at $IP"
 # downloading before Homebrew ran out of space and reported it as 113 failed
 # package installs -- a diagnosis that took longer than the run. The number was
 # knowable in the first second.
+#
+# Only a full run installs anything. With --verify-only the Brewfile is already
+# on the disk, so a built VM never has this much free and the check would stop
+# every re-check.
 # shellcheck disable=SC2016  # awk's $4 must reach the guest unexpanded.
 AVAIL_GB="$(guest 'df -g / | awk "NR==2{print \$4}"' 2>/dev/null || echo 0)"
 log "Guest has ${AVAIL_GB} GB free."
-if [ "${AVAIL_GB:-0}" -lt 45 ]; then
+if [ "$VERIFY_ONLY" -eq 0 ] && [ "${AVAIL_GB:-0}" -lt 45 ]; then
   die "Only ${AVAIL_GB} GB free in the guest; the Brewfile needs roughly 35-40.
      Disk size can only be set when the VM is created:
        tart delete $BASE_VM
