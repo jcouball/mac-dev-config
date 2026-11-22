@@ -114,6 +114,28 @@ log()  { printf '\n\033[1m>> %s\033[0m\n' "$*" >&2; }
 warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[31m❌ %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Whether tart has a local VM with exactly this name.
+#
+# The list is read to the end before it is searched, and nothing here is a
+# pipeline. This used to be `tart list --format json | grep -q NAME`. grep -q
+# exits at the first match; when tart was still writing, it was killed by
+# SIGPIPE, and under pipefail the pipeline failed though the name had been
+# found. The run then stopped with "Base VM not found" for a VM that was there,
+# about three times in eight.
+#
+# A tart that cannot list its VMs stops the run. It is not an answer of "no".
+#
+# --quiet prints the names alone, one to a line, so the name is compared with
+# a whole line and nothing has to be picked out of JSON. The old search matched
+# the name anywhere in the JSON, as part of a longer name or as the value of
+# some other field.
+vm_exists() {
+  local names
+  [ -n "$1" ] || return 1
+  names="$(tart list --quiet --source local)" || die "Could not list the tart VMs: 'tart list --quiet --source local' failed."
+  grep -qxF -- "$1" <<<"$names"
+}
+
 # --- Preflight -------------------------------------------------------------
 
 command -v tart >/dev/null 2>&1 \
@@ -146,7 +168,7 @@ remote_commit() {
 }
 
 if [ "$VERIFY_ONLY" -eq 0 ]; then
-  tart list --format json | grep -q "\"$BASE_VM\"" \
+  vm_exists "$BASE_VM" \
     || die "Base VM '$BASE_VM' not found. See 'Certification' in the README for how to build it."
 
   log "Asking GitHub what $TARGET_BRANCH is in $REPO..."
@@ -249,7 +271,7 @@ guest() {
 # --- Clone and boot --------------------------------------------------------
 
 if [ "$VERIFY_ONLY" -eq 0 ]; then
-  if tart list --format json | grep -q "\"$CERT_VM\""; then
+  if vm_exists "$CERT_VM"; then
     if [ "$KEEP_OLD" -eq 1 ]; then
       die "Cert VM '$CERT_VM' already exists and --keep was given."
     fi
