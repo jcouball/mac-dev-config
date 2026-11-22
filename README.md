@@ -733,7 +733,7 @@ throwaway macOS VM, as a user who is not `james`.
 | | |
 | --- | --- |
 | Date | 2026-11-22 |
-| Commit | `b93f027` |
+| Commit | `07e4f13` |
 | Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
 | VM result | **42 passed, 0 failed, 0 warnings, 2 excluded** |
 | Real-hardware result | **42 passed, 0 failed, 0 warnings, 0 excluded** |
@@ -744,15 +744,18 @@ without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
 This run was triggered by a change to the certification procedure itself:
-`6ad8e97` added `certify.sh --branch`. The VM result is from a run of the branch
-before it merged, at `7853405`. The tree on `main` after the merge, `81f090e`, is
-the tree that run built, so it counts for `b93f027`.
+`07e4f13` changed how `certify.sh` finds out whether a VM exists. The VM result
+is from a run of the branch before it merged, at `15cd459`. The tree on `main`
+after the merge, `dafb956`, is the tree that run built, so it counts for
+`07e4f13`.
 
 Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
 `6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
-Rosetta check), `4ba567f` (40/0/0 with 2 excluded, the first on macOS 27) and
+Rosetta check), `4ba567f` (40/0/0 with 2 excluded, the first on macOS 27),
 `fb5e1d8` (42/0/0 with 2 excluded, after `verify.sh` gained the check that
-`python3` resolves to an asdf shim in an interactive login shell).
+`python3` resolves to an asdf shim in an interactive login shell) and `b93f027`
+(42/0/0 with 2 excluded, after `certify.sh` gained `--branch`; the first
+certified from a branch run).
 The count changes as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
