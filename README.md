@@ -16,7 +16,7 @@ nothing here needs a conditional.
 | Terminal | Warp (installed by `.Brewfile`; its settings are not managed here) |
 | Package manager | Homebrew — 83 formulae, 39 casks, 49 VS Code extensions, 14 App Store apps |
 | Runtimes | asdf, 5 tools |
-| Rebuild | **certified** 2026-10-14 on a clean VM, except the App Store layer |
+| Rebuild | **certified** 2026-11-21 on a clean VM, except the App Store layer |
 
 ---
 
@@ -689,20 +689,25 @@ throwaway macOS VM, as a user who is not `james`.
 
 | | |
 | --- | --- |
-| Date | 2026-10-14 |
-| Commit | `4ba567f` |
+| Date | 2026-11-21 |
+| Commit | `fb5e1d8` |
 | Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
-| VM result | **40 passed, 0 failed, 0 warnings, 2 excluded** |
-| Real-hardware result | **40 passed, 0 failed, 0 warnings, 0 excluded** |
+| VM result | **42 passed, 0 failed, 0 warnings, 2 excluded** |
+| Real-hardware result | **42 passed, 0 failed, 0 warnings, 0 excluded** |
 
 Certification is two halves, and both are recorded above. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
 without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
+This run was triggered by a stricter `verify.sh`, not by a change to the
+bootstrap path: `fb5e1d8` added the check that `python3` resolves to an asdf
+shim in an interactive login shell.
+
 Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
-`6ed8da6` (41/0/2) and `0b6a6b3` (41/0/2, on macOS 26, the last run with the
-Rosetta check). The count changes as `verify.sh` gains or drops checks; that is
+`6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
+Rosetta check) and `4ba567f` (40/0/0 with 2 excluded, the first on macOS 27).
+The count changes as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
 The two exclusions are the things an Apple Silicon VM structurally cannot
