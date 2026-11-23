@@ -447,6 +447,30 @@ can check that a commit pushed to it was certified. `record.sh` is what keeps
 that true: it moves `stable` only to a commit it has just tagged, in the same
 push as the tag.
 
+#### The hooks
+
+That leaves one accident GitHub accepts: a commit made in a source that has
+`stable` checked out, and then pushed. Two git hooks in `.githooks/` stop it
+in the clone:
+
+| Hook | Stops | Lets through |
+| --- | --- | --- |
+| `pre-commit` | a commit while `main` or `stable` is checked out | any other branch, and a detached `HEAD`, which is what a rebase commits with |
+| `pre-push` | a push to `stable`, from any local branch, of a commit with no `certified/` tag | a commit that has the tag in this clone or gets it in the same push, which is what `record.sh` pushes |
+
+git runs a versioned hook only in a clone whose `core.hooksPath` names the
+directory. Script 08 sets that in the chezmoi source on every apply, and
+`verify.sh` checks it. `clone-repos.sh` in
+[dev-config](https://github.com/jcouball/dev-config) sets it in the working
+clone. In any other clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hooks are a guard against accidents, not a control. Each lives in one
+clone, and `--no-verify` skips it. The rulesets are the control.
+
 ### Re-certify the rebuild
 
 A pull request does not need a certification run to merge. It needs review, and
@@ -664,6 +688,8 @@ sshd-mac.conf                      sshd settings; script 07 installs it (ignored
 .chezmoi.toml.tmpl                 asks the machine's name once, at init
 .chezmoiignore                     keeps the ignored files out of the home directory
 .gitattributes                     * text=auto eol=lf
+.githooks/pre-commit               stops a commit on main or stable
+.githooks/pre-push                 stops a push to stable of a commit that was not certified
 
 dot_Brewfile                       83 formulae, 39 casks, 49 extensions, 14 App Store apps
 dot_tool-versions                  the five pinned runtimes
@@ -698,6 +724,7 @@ dot_claude/CLAUDE.md               Claude Code: global communication preferences
   run_onchange_after_05_link_openjdk.sh.tmpl                       makes Homebrew's openjdk visible to macOS
   run_onchange_after_06_install_amphetamine_power_protect.sh.tmpl  Amphetamine Power Protect, laptops only
   run_onchange_after_07_sshd_remote_login.sh.tmpl                  key-only sshd, then Remote Login on
+  run_after_08_git_hooks_path.sh.tmpl                              points the source's git at .githooks
   run_after_99_brew_bundle_check.sh                                fails the apply if a .Brewfile entry is missing
 
 certification/

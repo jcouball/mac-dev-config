@@ -120,11 +120,30 @@ if command -v chezmoi >/dev/null 2>&1; then
     bad "chezmoi reports drift" "$(printf '%s' "$status_out" | head -5 | tr '\n' ' ')"
   fi
 
-  if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
+  SRC="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+  if [ -d "$SRC/.git" ]; then
     ok "chezmoi source directory is a git checkout"
   else
     bad "chezmoi source directory missing or not a git checkout"
   fi
+
+  # The hooks that stop a commit on main or stable, and a push to stable of a
+  # commit that was not certified. git runs a versioned hook only when the
+  # clone's own config points at it, which script 08 sees to. --local, because
+  # a core.hooksPath in ~/.gitconfig would say nothing about this clone.
+  hooks_path="$(git -C "$SRC" config --local --get core.hooksPath 2>/dev/null || true)"
+  if [ "$hooks_path" = ".githooks" ]; then
+    ok "chezmoi source runs the hooks in .githooks"
+  else
+    bad "core.hooksPath in the chezmoi source is '${hooks_path:-unset}', not .githooks" "script 08 sets it"
+  fi
+  for hook in pre-commit pre-push; do
+    if [ -x "$SRC/.githooks/$hook" ]; then
+      ok ".githooks/$hook is executable"
+    else
+      bad ".githooks/$hook is missing or not executable" "git skips a hook it cannot run"
+    fi
+  done
 else
   bad "chezmoi not installed"
 fi
@@ -513,6 +532,8 @@ done
 
 section "Remote access over SSH"
 
+# Set again here, and not only under chezmoi above, so that this section does
+# not depend on that one having run.
 SRC="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
 sshd_dropin=/etc/ssh/sshd_config.d/00-mac-dev-config.conf
 
