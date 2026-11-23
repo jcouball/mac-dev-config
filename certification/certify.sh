@@ -15,6 +15,8 @@
 #   ./certification/certify.sh --verify-only    # re-run checks on the live cert VM
 #   ./certification/certify.sh --keep           # do not delete a previous cert VM
 #
+# A CERTIFIED run is recorded afterwards with ./certification/record.sh.
+#
 # THE DEVIATIONS
 #
 # The point of certification is to run what the README says, not a convenient
@@ -75,7 +77,7 @@ while [ $# -gt 0 ]; do
       BRANCH_GIVEN=1
       shift
       ;;
-    --help|-h) sed -n '2,46p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,48p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
   esac
   shift
@@ -380,6 +382,13 @@ chezmoi init --apply '"$BRANCH_OPTION"'--promptString "Computer name='"$CERT_VM"
   fi
   [ -z "$COMMIT_PROBLEM" ] || note "$COMMIT_PROBLEM"
   [ -z "$MAIN_NOTE" ] || note "$MAIN_NOTE"
+
+  # The machine that was built, for record.sh to put in the tag. The sizes are
+  # what tart gave the VM; the version is asked of the guest.
+  GUEST_OS="$(guest 'sw_vers -productVersion' 2>/dev/null || true)"
+  GUEST_SIZE="$(tart get "$CERT_VM" 2>/dev/null \
+    | awk 'NR == 2 { printf "%s CPU / %d GB / %s GB", $2, $3 / 1024, $4 }' || true)"
+  note "Guest:  macOS ${GUEST_OS:-unknown}, ${GUEST_SIZE:-size unknown}, user $CERT_USER"
 fi
 
 # --- Verify ----------------------------------------------------------------
@@ -431,6 +440,21 @@ else
   [ -z "$COMMIT_PROBLEM" ] || printf '   %s\n' "$COMMIT_PROBLEM"
 fi
 
+# The verdict and the name of the verify log, written to the end of the
+# bootstrap log. record.sh reads them there: it tags a run only when this line
+# says CERTIFIED, so it never has to work the verdict out again from the parts.
+# A --verify-only run has no bootstrap log and is not something to record.
+if [ "$VERIFY_ONLY" -eq 0 ]; then
+  {
+    printf 'Verify log: %s\n' "$(basename "$VERIFY_LOG")"
+    if [ "$VERIFY_STATUS" -eq 0 ]; then
+      printf 'Verdict: CERTIFIED\n'
+    else
+      printf 'Verdict: NOT CERTIFIED\n'
+    fi
+  } >>"$BOOTSTRAP_LOG"
+fi
+
 if [ "$VERIFY_ONLY" -eq 0 ] && [ -n "$BUILT_COMMIT" ]; then
   printf '   Branch: %s\n   Commit: %s\n   Tree:   %s\n' "$TARGET_BRANCH" "$BUILT_COMMIT" "$BUILT_TREE"
 fi
@@ -447,8 +471,24 @@ The VM is left running so you can inspect it:
   ./certification/certify.sh --verify-only${BRANCH:+ --branch $BRANCH}   # re-check without rebuilding
   tart stop $CERT_VM && tart delete $CERT_VM # when you are done
 
-Record anything this found in the Certification section of the README. A defect
-that is fixed but not written down will be rediscovered from scratch.
+Write down any defect this found in the Certification section of the README. A
+defect that is fixed but not written down will be rediscovered from scratch.
 EOF
+
+if [ "$VERIFY_STATUS" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+  if [ -n "$BRANCH" ]; then
+    cat <<EOF
+
+To record this certification: merge '$BRANCH', run 'chezmoi update' on this
+Mac, then run ./certification/record.sh
+EOF
+  else
+    cat <<EOF
+
+To record this certification: run 'chezmoi update' on this Mac if its source is
+not at $BUILT_COMMIT, then run ./certification/record.sh
+EOF
+  fi
+fi
 
 exit "$VERIFY_STATUS"
