@@ -10,6 +10,10 @@ templating, every file is simply the file. The cost is that `.gitconfig`,
 `.tool-versions` and `topgrade.toml` now exist in more than one repo and will
 drift; the benefit is that nothing here needs a conditional.
 
+The three are worked on together in
+[jcouball/dev-config](https://github.com/jcouball/dev-config), the workspace
+they are cloned into. Issues that span more than one of them are filed there.
+
 | | |
 | --- | --- |
 | Hosts | Neuromancer — Apple M2 Max, macOS Golden Gate 27.2.1 |
@@ -885,21 +889,28 @@ throwaway macOS VM, as a user who is not `james`.
 | | |
 | --- | --- |
 | Date | 2026-11-22 |
-| Commit | `faed258` |
+| Commit | `1d8fe90` |
 | Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
-| VM result | **42 passed, 0 failed, 0 warnings, 2 excluded** |
-| Real-hardware result | **42 passed, 0 failed, 0 warnings, 0 excluded** |
+| VM result | **48 passed, 0 failed, 0 warnings, 2 excluded** |
+| Real-hardware result, Neuromancer | **48 passed, 0 failed, 0 warnings, 0 excluded** |
+| Real-hardware result, cortex | **47 passed, 0 failed, 1 warning, 0 excluded** |
 
 Certification is two halves, and both are recorded above. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
 without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
-This run was triggered by the rename of the repo to `mac-dev-config`, which
-changes the repo the bootstrap command and `certify.sh` clone. The VM result is
-from a run of the branch before it merged, at `3d066b6`. The tree on `main`
-after the merge, `ab6a303`, is the tree that run built, so it counts for
-`faed258`.
+This run was triggered by script 07, which restricts sshd to key logins from
+the LAN and turns Remote Login on, and by the six checks `verify.sh` gained
+for it. The VM result is from a run of the branch before it merged, at
+`49588d7`. The tree on `main` after the merge, `fc799bd`, is the tree that run
+built, so it counts for `1d8fe90`.
+
+It is the first run recorded on both Macs. On each, the apply turned Remote
+Login on from off, the step the VM cannot reach because its base image has
+Remote Login on already. cortex's warning is a `~/README.md` from 2025, left
+from when this README was deployed to the home directory. It predates the
+change and nothing here writes it.
 
 Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
 `6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
@@ -907,8 +918,9 @@ Rosetta check), `4ba567f` (40/0/0 with 2 excluded, the first on macOS 27),
 `fb5e1d8` (42/0/0 with 2 excluded, after `verify.sh` gained the check that
 `python3` resolves to an asdf shim in an interactive login shell), `b93f027`
 (42/0/0 with 2 excluded, after `certify.sh` gained `--branch`; the first
-certified from a branch run) and `07e4f13` (42/0/0 with 2 excluded, after a fix
-to how `certify.sh` finds out whether a VM exists).
+certified from a branch run), `07e4f13` (42/0/0 with 2 excluded, after a fix
+to how `certify.sh` finds out whether a VM exists) and `faed258` (42/0/0 with
+2 excluded, after the repo was renamed to `mac-dev-config`).
 The count changes as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
