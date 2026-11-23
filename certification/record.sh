@@ -12,9 +12,17 @@
 # on that commit. Nothing is typed by hand, no file changes, and no pull
 # request is needed. A tag that exists always means a full certification.
 #
-# Run it on this Mac, in the checkout certify.sh was run from, after the
-# change has merged and `chezmoi update` has applied it here. It asks for the
-# sudo password, because verify.sh reads sshd's settings as root.
+# It then moves the branch `stable` to that commit. A Mac that is not being
+# developed on follows stable, and a rebuild clones it, so a commit reaches
+# them only once it is certified. stable only moves forward, and the tag and
+# the branch are pushed together or not at all.
+#
+# Run it on the Mac being developed on, whose chezmoi source follows main, in
+# the checkout certify.sh was run from, after `chezmoi update` has applied the
+# commit here. That Mac takes a commit before it is certified: the second half
+# of a certification is verify.sh passing on it. Either Mac will do, and the
+# tag says which. It asks for the sudo password, because verify.sh reads
+# sshd's settings as root.
 #
 # Usage:
 #   ./certification/record.sh                         # record the newest full run
@@ -25,9 +33,10 @@
 #
 # What stops it, with no tag made:
 #
-#   - this Mac is not Neuromancer
+#   - this Mac is not one of the Macs this repo configures
 #   - the run was not CERTIFIED
 #   - the commit is not on origin/main, or already has a certified/ tag
+#   - stable holds a commit that is not a commit of main
 #   - the tree of the commit is not the tree the VM built
 #   - the verify.sh that checked the VM is not the commit's
 #   - the chezmoi source on this Mac is at another commit, or has
@@ -70,17 +79,18 @@ while [ $# -gt 0 ]; do
       REASON_GIVEN=1
       shift
       ;;
-    --help|-h) sed -n '2,40p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,49p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
   esac
   shift
 done
 
-# The Mac whose verify.sh result a tag records. A certified/ tag means the VM
-# run and this one machine, so the script refuses to run anywhere else: on
-# cortex it would push an ordinary tag holding cortex's result, and the commit
-# could then not be recorded from here, because it would already have a tag.
-RECORD_HOST="Neuromancer"
+# The Macs whose verify.sh result a tag may record: the ones this repo
+# configures. Either can be the Mac being developed on, so either can record,
+# and the tag's Host line says which did. A commit gets one tag, from one of
+# them. Anything else is a machine this repo was never applied to as itself,
+# such as the certification VM, and its result is not a real-hardware one.
+RECORD_HOSTS=("Neuromancer" "cortex")
 
 log() { printf '\n\033[1m>> %s\033[0m\n' "$*" >&2; }
 die() { printf '\033[31m❌ %s\033[0m\n' "$*" >&2; printf '   No tag was made.\n' >&2; exit 1; }
@@ -123,9 +133,12 @@ COUNTS_PATTERN='^[0-9]+ passed [0-9]+ failed [0-9]+ warnings [0-9]+ excluded$'
 SHA_PATTERN='^[0-9a-f]{40}$'
 
 HOST_NAME="$(scutil --get ComputerName 2>/dev/null || hostname -s)"
-[ "$HOST_NAME" = "$RECORD_HOST" ] \
-  || die "This Mac is $HOST_NAME. A certification is recorded on $RECORD_HOST only.
-   To check this Mac, run ./certification/verify.sh; its result is not recorded."
+HOST_KNOWN=0
+for known in "${RECORD_HOSTS[@]}"; do
+  [ "$HOST_NAME" != "$known" ] || HOST_KNOWN=1
+done
+[ "$HOST_KNOWN" -eq 1 ] \
+  || die "This machine is $HOST_NAME. A certification is recorded on one of: ${RECORD_HOSTS[*]}."
 
 # --- 1. The VM result, from the logs of a certify.sh run ---------------------
 
@@ -208,6 +221,55 @@ EXISTING="$(repo tag --points-at "$COMMIT" --list 'certified/*')"
 TODAY="$(date +%Y-%m-%d)"
 TAG="certified/$TODAY-$SHORT"
 
+# Where stable is on origin, and whether this commit moves it.
+#
+# stable is the branch the Macs follow. It only ever moves forward, to a commit
+# this script has just tagged, so it should always be a commit of main that is
+# behind the one being recorded. Three cases are fine: there is no stable yet
+# and this creates it, stable is behind and moves here, or stable is already
+# at or ahead of this commit (an older commit recorded with --commit) and is
+# left alone. Anything else, a stable that is not a commit of main above all,
+# means stable has been pushed to by hand, and the script stops before it adds
+# to that.
+STABLE_LINE="$(GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" ls-remote --heads origin refs/heads/stable)" \
+  || die "Could not ask origin where stable is."
+STABLE_AT="${STABLE_LINE%%[[:space:]]*}"
+MOVE_STABLE=1
+if [ -z "$STABLE_AT" ]; then
+  echo "   There is no stable branch yet. Recording this creates it." >&2
+elif ! [[ "$STABLE_AT" =~ $SHA_PATTERN ]]; then
+  die "Could not read where stable is from: $STABLE_LINE"
+elif ! repo cat-file -e "$STABLE_AT^{commit}" 2>/dev/null; then
+  die "stable is at $STABLE_AT, a commit this checkout does not have. It is not on main."
+elif ! repo merge-base --is-ancestor "$STABLE_AT" origin/main; then
+  # Asked before stable is compared with this commit. A commit on a branch
+  # that was made from main's tip is ahead of this one and is still not a
+  # commit of main: without this it would pass as "at or ahead".
+  die "stable is at $STABLE_AT, which is not a commit of main.
+   stable should hold only commits of main. Find out who moved it before recording."
+elif [ "$STABLE_AT" = "$COMMIT" ] || repo merge-base --is-ancestor "$COMMIT" "$STABLE_AT"; then
+  MOVE_STABLE=0
+  echo "   stable is at ${STABLE_AT:0:7}, at or ahead of this commit. It stays there." >&2
+elif repo merge-base --is-ancestor "$STABLE_AT" "$COMMIT"; then
+  echo "   stable is at ${STABLE_AT:0:7} and will move to $SHORT." >&2
+else
+  die "stable is at $STABLE_AT, which is neither behind nor ahead of $SHORT.
+   stable should hold only commits of main. Find out who moved it before recording."
+fi
+
+# What gets pushed: the tag, and stable when it moves.
+#
+# Two lists, because the tag does not exist until step 8. The dry run in step 5
+# has only the commit to offer for the tag's name. The real push names the tag
+# itself: pushing the commit to refs/tags/ would make a tag on origin that has
+# no message, in place of the annotated one made here.
+PUSH_CHECK_REFS=("$COMMIT:refs/tags/$TAG")
+PUSH_REFS=("refs/tags/$TAG:refs/tags/$TAG")
+if [ "$MOVE_STABLE" -eq 1 ]; then
+  PUSH_CHECK_REFS+=("$COMMIT:refs/heads/stable")
+  PUSH_REFS+=("$COMMIT:refs/heads/stable")
+fi
+
 # --- 3. The trees -------------------------------------------------------------
 
 TREE="$(repo rev-parse "$COMMIT^{tree}")"
@@ -246,11 +308,22 @@ SOURCE="$(chezmoi source-path)" || die "Could not ask chezmoi for its source pat
 # minutes. A `chezmoi update` in that time would have verify.sh check a newer
 # commit, and its result would be recorded against this one.
 check_source() {
-  local head changes
+  local head changes branch advice
   head="$(git -C "$SOURCE" rev-parse HEAD)" || die "The chezmoi source at $SOURCE is not a git checkout."
-  [ "$head" = "$COMMIT" ] \
-    || die "The chezmoi source on this Mac is at $head, not $COMMIT.$1
-   verify.sh here would check another commit. Run: chezmoi update"
+  if [ "$head" != "$COMMIT" ]; then
+    # Say what to do about it. A source on stable cannot get there with an
+    # update: stable does not have the commit until this script has run.
+    branch="$(git -C "$SOURCE" symbolic-ref --quiet --short HEAD || true)"
+    if [ "$branch" = "stable" ]; then
+      advice="This Mac follows stable, which gets the commit only when it is recorded.
+   Record from the Mac being developed on, or make this one that Mac:
+     chezmoi git -- fetch origin && chezmoi git -- switch main && chezmoi update"
+    else
+      advice="Run: chezmoi update"
+    fi
+    die "The chezmoi source on this Mac is at $head, not $COMMIT.$1
+   verify.sh here would check another commit. $advice"
+  fi
   changes="$(git -C "$SOURCE" status --porcelain)" \
     || die "Could not read the state of the chezmoi source at $SOURCE."
   [ -z "$changes" ] \
@@ -266,8 +339,8 @@ check_source ""
 # business. GIT_TERMINAL_PROMPT=0 makes a missing credential fail here, and
 # not wait for a password nobody is watching for.
 log "Checking that $TAG can be pushed"
-PUSH_CHECK="$(GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push --dry-run origin "$COMMIT:refs/tags/$TAG" 2>&1)" \
-  || die "This session cannot push a tag to origin:
+PUSH_CHECK="$(GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push --dry-run --atomic origin "${PUSH_CHECK_REFS[@]}" 2>&1)" \
+  || die "This session cannot push the tag$([ "$MOVE_STABLE" -eq 0 ] || echo " and stable") to origin:
 $PUSH_CHECK"
 
 # --- 6. verify.sh on this Mac -------------------------------------------------
@@ -335,7 +408,9 @@ EOF
 [ "$REASON_GIVEN" -eq 0 ] || printf 'Triggered by: %s\n' "$REASON" >>"$MESSAGE_FILE"
 
 log "The tag"
-printf '   %s -> %s\n\n' "$TAG" "$COMMIT" >&2
+printf '   %s -> %s\n' "$TAG" "$COMMIT" >&2
+[ "$MOVE_STABLE" -eq 0 ] || printf '   stable -> %s\n' "$COMMIT" >&2
+printf '\n' >&2
 sed 's/^/   /' "$MESSAGE_FILE" >&2
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -350,11 +425,16 @@ fi
 repo tag --annotate --no-sign --file "$MESSAGE_FILE" "$TAG" "$COMMIT" \
   || die "Could not create the tag $TAG."
 
-# That one tag, by name. Never --tags.
-if ! GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push origin "refs/tags/$TAG"; then
+# That one tag, by name, never --tags, and stable with it when it moves.
+# --atomic: both arrive or neither does, so stable is never at a commit that
+# has no tag. Without --force, so stable can only move forward.
+if ! GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push --atomic origin "${PUSH_REFS[@]}"; then
   repo tag --delete "$TAG" >/dev/null 2>&1 || true
   die "Could not push $TAG. The local tag was removed, so this can be run again."
 fi
 
 printf '\n\033[32m✅ Recorded\033[0m -- %s on %s\n' "$TAG" "$SHORT"
 printf '   git tag -n99 -l %s\n' "'$TAG'"
+if [ "$MOVE_STABLE" -eq 1 ]; then
+  printf '   stable is now at %s. On each Mac that follows stable: chezmoi update\n' "$SHORT"
+fi

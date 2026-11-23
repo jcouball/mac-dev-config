@@ -62,8 +62,11 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install chezmoi
 
 # 3. Everything else.
-chezmoi init --apply jcouball/mac-dev-config
+chezmoi init --apply --branch stable jcouball/mac-dev-config
 ```
+
+`stable` is the branch that holds the last certified commit;
+[Main and stable](#main-and-stable) says how it moves.
 
 Step 3 asks one question — what this machine is called — and then does the rest:
 the Brewfile, the runtimes, every config file, the JDK link, and Remote Login
@@ -134,7 +137,7 @@ back into the repo in the same sitting.
 brew install <formula>            # or: brew install --cask <cask>
 brew bundle dump --global --force
 chezmoi re-add ~/.Brewfile
-chezmoi cd; git commit -am "Add <name>"; git push
+# then commit it on a branch and open a pull request: see "Main and stable"
 ```
 
 `brew bundle dump` rewrites `~/.Brewfile` from what is actually installed, so
@@ -148,7 +151,7 @@ entry — most of what makes that file readable — is included by default now;
 brew uninstall <formula>          # or: brew uninstall --cask <cask>
 brew bundle dump --global --force
 chezmoi re-add ~/.Brewfile
-chezmoi cd; git commit -am "Remove <name>"; git push
+# then commit it on a branch and open a pull request: see "Main and stable"
 ```
 
 The Brewfile has **no cleanup semantics** during a normal apply. Deleting a line
@@ -185,7 +188,7 @@ Casks cannot be pinned. For those, exclude them from topgrade instead.
 asdf install ruby 4.0.7
 asdf set --home ruby 4.0.7
 chezmoi re-add ~/.tool-versions
-chezmoi cd; git commit -am "ruby 4.0.6 -> 4.0.7"; git push
+# then commit it on a branch and open a pull request: see "Main and stable"
 ```
 
 `asdf set --home` rewrites `~/.tool-versions`, so that file must go back to the
@@ -254,7 +257,7 @@ pulled in a dependency. Decide which you want, then make the repo agree:
 # adopt it
 brew bundle dump --global --force
 chezmoi re-add ~/.Brewfile
-chezmoi cd; git commit -am "Adopt <name>"; git push
+# then commit it on a branch and open a pull request: see "Main and stable"
 
 # or refuse it
 code --uninstall-extension <publisher.name>
@@ -287,7 +290,7 @@ chezmoi edit ~/.zshrc --apply
 
 ```bash
 chezmoi add ~/.some-config
-chezmoi cd; git commit -am "Manage some-config"
+# then commit it on a branch and open a pull request: see "Main and stable"
 ```
 
 #### Stop managing a file
@@ -368,81 +371,177 @@ bootstrap path even though no file in this repo changed** — it changes Setup
 Assistant, the available bottles, and the SDK the runtimes compile against. It
 triggers re-certification exactly as editing a provisioning script would.
 
+### Main and stable
+
+A change merges to `main`. Between `main` and a machine that is not being
+worked on is a certification.
+
+| Branch | Holds | Moved by |
+| --- | --- | --- |
+| `main` | every merged change, certified or not | a pull request |
+| `stable` | the last commit that was certified | `certification/record.sh`, and nothing else |
+
+`main` is often ahead of `stable`, and that is the normal state, not a fault:
+several changes can merge and be certified together.
+
+```bash
+git fetch origin
+git log --oneline origin/stable..origin/main    # merged, not yet certified
+```
+
+Which branch a Mac's chezmoi source follows depends on what the Mac is being
+used for, not on which Mac it is:
+
+| Role | Source follows | Gets | For |
+| --- | --- | --- | --- |
+| Following | `stable` | certified commits only | a Mac nobody is changing the configuration on, and a rebuild |
+| Developing | `main`, or a branch of a change in progress | whatever has merged, and its own edits | the Mac the configuration is being changed on |
+
+```bash
+# start developing on this Mac
+chezmoi git -- fetch origin && chezmoi git -- switch main && chezmoi update
+
+# go back to following
+chezmoi git -- fetch origin && chezmoi git -- switch stable && chezmoi update
+```
+
+The fetch comes first because the source may never have seen the branch: a
+source cloned before `stable` existed has no `stable` to switch to until it
+has fetched.
+
+Either Mac can take either role. A Mac that is being developed on runs
+uncertified configuration whatever its source follows: an edit exists there
+before any commit does. So `stable` is not for that Mac. It is for the other
+one, and for [Rebuild from nothing](#rebuild-from-nothing), which clones
+`stable`.
+
+**Changing something on the developing Mac** ends the same way whatever was
+changed, and every playbook that says to commit on a branch means this.
+`chezmoi re-add` and `chezmoi add` write to the source's working tree and
+commit nothing, and `main` takes changes only through a pull request:
+
+```bash
+chezmoi re-add ~/.zshrc
+chezmoi cd
+git switch -c fix/<what>
+git add -A                      # chezmoi add makes new files, which commit -a leaves out
+git commit -m "<what and why>" && git push -u origin fix/<what>
+gh pr create
+# after the merge:
+git switch main && chezmoi update
+```
+
+While the pull request is open the source is on its branch, so the source and
+the home directory agree and `chezmoi status` is empty.
+
+**A following Mac is for pulling.** A change made there shows as drift until it
+has merged, been certified, and come back through `stable`. Switch the Mac to
+developing first.
+
+A ruleset stops `stable` being deleted or moved backwards. Nothing on GitHub
+can check that a commit pushed to it was certified. `record.sh` is what keeps
+that true: it moves `stable` only to a commit it has just tagged, in the same
+push as the tag.
+
 ### Re-certify the rebuild
 
-Do this after **any change to the bootstrap path**: an edited provisioning
-script, a new package manager, a change to `.chezmoi.toml.tmpl`, a renamed repo,
-or a major macOS upgrade. Not needed for adding a package or bumping a runtime —
-those exercise proven ground.
+A pull request does not need a certification run to merge. It needs review, and
+whatever shows the change itself works: a script run against stand-ins, a test
+of the logic, an apply in a scratch directory. The pull request says what was
+done.
 
-**Also re-certify when `verify.sh` gets stricter.** A tightened check invalidates
-the badge exactly as surely as a changed script, because the previous run passed
-a test that no longer exists. This is easy to miss: nothing about the machine
-changed, so it does not feel like a change at all. It happened immediately after
-the first certified run — the VS Code check moved from comparing totals to
-checking each declared extension by name, and the certified run had never been
-asked that question.
+Certify `main` when there is something on it to put on the Macs:
 
 ```bash
 ./certification/certify.sh
 ```
 
-That clones the pristine base VM, boots it, runs the bootstrap **unmodified**
-from this README's URL, and then verifies. Transcripts land in
-`certification/logs/` — without a log, failures have to be inferred from
-wreckage. The bootstrap log ends with the commit and the tree the VM built, and
-a copy of the `verify.sh` that checked the VM is kept beside the logs.
+That clones the pristine base VM, boots it, runs the bootstrap from this README
+against `main`, and then verifies. Transcripts land in `certification/logs/` —
+without a log, failures have to be inferred from wreckage. The bootstrap log
+ends with the commit and the tree the VM built, and a copy of the `verify.sh`
+that checked the VM is kept beside the logs.
 
-`certify.sh` certifies `main` unless told otherwise. To certify a change before
-it merges, name its branch:
+**What needs a run before it reaches `stable`:** anything a rebuild runs or
+reads. That is a provisioning script, `.Brewfile`, `.tool-versions`,
+`.chezmoi.toml.tmpl`, `.chezmoiignore`, a managed config file, and `verify.sh`.
+A tightened check counts exactly as a changed script does, because the previous
+run passed a test that no longer exists. A major macOS upgrade needs a run too,
+with no commit at all.
+
+**What does not:** the README, `record.sh`, and `prepare-base-vm.sh`. A commit
+that changes only those can sit on `main` until the next run takes it along.
+`certify.sh` is tested by the next run it makes.
+
+**One run can cover several changes.** It certifies the tip of `main`, and
+everything merged since the last tag is in that commit. When a run of several
+changes fails, the logs usually name the script. If they do not, certify the
+changes one at a time: `--branch` certifies any pushed branch, and `main` can be
+certified at an earlier commit by pushing that commit to a branch.
+
+**To try one change in the VM before it merges**, name its branch:
 
 ```bash
 ./certification/certify.sh --branch <branch>
 ```
 
-The VM clones the branch from GitHub, and `verify.sh` comes from the local
-checkout, copied at the start of the run. So the script stops before booting
-the VM unless all three of these hold:
+This is worth the wait for a new provisioning script or a change to the three
+bootstrap commands, where a clean machine finds what nothing else does. The VM
+clones the branch from GitHub, and `verify.sh` comes from the local checkout,
+copied at the start of the run. So the script stops before booting the VM
+unless all three of these hold:
 
 - the branch is pushed,
 - the local checkout is at the commit the branch has on GitHub, and
 - `certification/verify.sh` has no uncommitted changes.
 
-Put the commit, the tree, and the verdict the run prints in the pull request.
+Run it once, after review, on the commit that will merge: a new commit on the
+branch means a new run. A passing branch run can be recorded for the merged
+commit when the tree on `main` after the merge is the tree the VM built. That
+holds when the branch contained `main`'s tip and nothing else landed in
+between; the run says whether the branch contains `main`'s tip. `record.sh`
+makes the comparison, and it is what decides.
 
-A passing branch run certifies the merged commit only when the tree on `main`
-after the merge is the tree the VM built. This repo allows rebase merges only,
-and a rebase merge gives the commits new SHAs, so the commit on `main` is never
-the commit the VM built. The tree is the same when the branch contained `main`'s
-tip and nothing else landed in between. The run says whether the branch contains
-`main`'s tip, which tells you what to expect. `record.sh` makes the comparison,
-and it is what decides.
+**To check a change to `verify.sh` alone**, `./certification/certify.sh --verify-only`
+runs the new checks against the VM the last run left. It takes about a minute.
+It cannot be recorded, because it rebuilds nothing.
 
-A run gives the VM result only. To record the certification, apply the commit
-to this Mac and run `record.sh` in the checkout `certify.sh` ran in:
+#### Record a run and move stable
+
+A run gives the VM result only. To record it, apply the commit on the
+developing Mac and run `record.sh` there, in the checkout `certify.sh` ran in:
 
 ```bash
-chezmoi update                  # after the merge, for a branch run
+chezmoi update
 ./certification/record.sh       # --dry-run shows the tag and makes nothing
 ```
 
 `record.sh` reads the VM result from the run's logs, then stops unless all of
 these hold:
 
-- this Mac is Neuromancer,
+- this Mac is Neuromancer or cortex,
 - the run was CERTIFIED,
 - the commit to certify is on `main` and has no `certified/` tag yet,
+- `stable` is behind that commit, at it, or ahead of it,
 - its tree is the tree the VM built,
 - the `verify.sh` that checked the VM is the one at that commit,
 - the chezmoi source on this Mac is at that commit, with nothing uncommitted,
   both before `verify.sh` runs and after it,
-- a tag can be pushed from this session, and
+- the tag and `stable` can be pushed from this session, and
 - `verify.sh` passes here, which is the real-hardware half.
 
-It then shows the tag, creates it on the commit and pushes it. It certifies
-the tip of `main` unless `--commit` names another commit, and reads the newest
-full run unless `--log` names another bootstrap log. If the trees differ,
-certify `main` and record that run.
+The source has to be on `main` for that: a source on `stable` cannot be at a
+commit that `stable` does not have yet, and the script says so. Commit a
+`chezmoi re-add` to a branch, or set it aside, before recording.
+
+It then shows the tag, creates it on the commit, and pushes the tag and
+`stable` together: both arrive or neither does. It certifies the tip of `main`
+unless `--commit` names another commit, and reads the newest full run unless
+`--log` names another bootstrap log. An older commit recorded with `--commit`
+gets its tag and leaves `stable` where it is. If the trees differ, certify
+`main` and record that run.
+
+Then on each Mac that follows `stable`: `chezmoi update`.
 
 Nothing is committed, so no pull request is needed to record a certification.
 Write a defect the run found into [What a clean machine found](#what-a-clean-machine-found);
@@ -825,8 +924,12 @@ checkout of this repo, add an `else if` branch for the machine's name to
 `private_dot_ssh/private_authorized_keys.tmpl`, holding
 `restrict,pty` and the contents of `~/.ssh/id_ed25519_<name>.pub`, and add a
 `Host` block to `private_dot_ssh/private_config`. The name is compared in lower
-case with the computer name chezmoi asked for at `chezmoi init`. Push, then
-`chezmoi update` on every Mac.
+case with the computer name chezmoi asked for at `chezmoi init`. Open a pull
+request and merge it. The developing Mac gets the change at its next
+`chezmoi update`. A Mac that follows `stable`, the new Mac included, gets it
+only after the change has been certified and recorded: see
+[Record a run and move stable](#record-a-run-and-move-stable). Then run
+`chezmoi update` on each of them.
 
 A Mac whose name has no branch gets a key file with no key: Remote Login is on,
 and nobody can log in. Script 07 warns, and `verify.sh` fails, until the branch
@@ -837,11 +940,28 @@ exists.
 Make the new key as in [Add a Mac](#add-a-mac), under the same name, and
 replace the private key in the 1Password item. In a checkout of this repo,
 replace the key on that Mac's line in
-`private_dot_ssh/private_authorized_keys.tmpl`, then commit and push.
+`private_dot_ssh/private_authorized_keys.tmpl`, then open a pull request and
+merge it.
 
-On the Mac the key opens, run `chezmoi update`, at the machine or over a
-session that is already open, because the old key stops working once its line
-is gone. Then repeat [Set up a client](#set-up-a-client) on each client.
+The old key stays authorized on a Mac until that Mac has the change. The
+developing Mac has it at its next `chezmoi update`. A Mac that follows
+`stable` has it only after the change has been certified and recorded, and
+`chezmoi update` has run there. If the old key cannot wait for that, make the
+Mac a developing one:
+
+```bash
+chezmoi git -- fetch origin && chezmoi git -- switch main && chezmoi update
+```
+
+Leave it on `main` until the change has been certified and recorded. Switching
+back sooner applies `stable`'s copy of the template, which still has the old
+key: the old key would be authorized again and the new one removed. Switch
+back once `stable` has the change: `chezmoi git -- fetch origin`, then
+`chezmoi git -- log origin/stable` shows it.
+
+Run that `chezmoi update` at the machine or over a session that is already
+open, because the old key stops working once its line is gone. Then repeat
+[Set up a client](#set-up-a-client) on each client.
 
 ### Revoke a key
 
@@ -903,8 +1023,9 @@ command at the top.
 | Weekly, before topgrade | `chezmoi status` | Catches files changed on disk that never made it back. |
 | Monthly | `./certification/verify.sh` | The stronger audit: proves the machine still matches the repo in outcome, not just in file contents. |
 | Per project | `asdf install` | Runtimes are project-scoped. Never on a schedule. |
-| After any bootstrap-path change | `./certification/certify.sh` | See [Re-certify the rebuild](#re-certify-the-rebuild). |
-| After a certified run is merged and applied here | `./certification/record.sh` | Tags the commit with the result. See [The certified run](#the-certified-run). |
+| When `main` has something to put on the Macs | `./certification/certify.sh` | See [Re-certify the rebuild](#re-certify-the-rebuild). |
+| After a certified run, with its commit applied on the developing Mac | `./certification/record.sh` | Tags the commit with the result and moves `stable` to it. See [Record a run and move stable](#record-a-run-and-move-stable). |
+| After `stable` moves, on each Mac that follows it | `chezmoi update` | Brings in the newly certified commits. |
 
 ---
 
@@ -980,14 +1101,16 @@ without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
 `certification/record.sh` makes the tag, and makes it only when both halves
-are about the same commit; [Re-certify the rebuild](#re-certify-the-rebuild)
-says when to run it. A tag that exists therefore always means a full
+are about the same commit; it then moves `stable` to that commit.
+[Record a run and move stable](#record-a-run-and-move-stable) says when to run
+it. A tag that exists therefore always means a full
 certification. `Built from` names what the VM cloned: `main`, or the branch
 and the commit it was at before a rebase merge gave the change a new commit.
 
-The real-hardware half is Neuromancer's, and `record.sh` stops on any other
-Mac. cortex is not recorded: after an apply there, run `verify.sh` on it and
-expect the same counts.
+The real-hardware half comes from the Mac that recorded the certification,
+which is the one being developed on at the time; the `Host` line says which.
+A commit has one tag, from one Mac. On the other Mac, after `stable` has moved
+and `chezmoi update` has run, `verify.sh` should give the same counts.
 
 The tags are not signed. A ruleset on `certified/*` stops one being deleted or
 moved, so a record cannot change after it is made. To correct a wrong tag,
@@ -1347,7 +1470,7 @@ before it will unlock. A rebuild using secret templates is three steps:
 ```bash
 brew install --cask 1password 1password-cli
 op signin
-chezmoi init --apply jcouball/mac-dev-config
+chezmoi init --apply --branch stable jcouball/mac-dev-config
 ```
 
 Worth weighing against keeping secret-bearing files out entirely, which keeps
