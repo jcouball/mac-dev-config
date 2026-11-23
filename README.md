@@ -415,25 +415,38 @@ after the merge is the tree the VM built. This repo allows rebase merges only,
 and a rebase merge gives the commits new SHAs, so the commit on `main` is never
 the commit the VM built. The tree is the same when the branch contained `main`'s
 tip and nothing else landed in between. The run says whether the branch contains
-`main`'s tip, which tells you what to expect. The comparison is what decides.
-Right after the merge, compare by hand:
+`main`'s tip, which tells you what to expect. `record.sh` makes the comparison,
+and it is what decides.
+
+A run gives the VM result only. To record the certification, apply the commit
+to this Mac and run `record.sh` in the checkout `certify.sh` ran in:
 
 ```bash
-git fetch origin
-git rev-parse 'origin/main^{tree}'
+chezmoi update                  # after the merge, for a branch run
+./certification/record.sh       # --dry-run shows the tag and makes nothing
 ```
 
-The commit to compare is the pull request's last commit as it landed on `main`.
-If something else has landed since, put that commit's SHA in place of
-`origin/main`.
+`record.sh` reads the VM result from the run's logs, then stops unless all of
+these hold:
 
-- **The trees match.** The branch run is the VM result for that `main` commit.
-- **The trees differ.** Certify `main`.
+- this Mac is Neuromancer,
+- the run was CERTIFIED,
+- the commit to certify is on `main` and has no `certified/` tag yet,
+- its tree is the tree the VM built,
+- the `verify.sh` that checked the VM is the one at that commit,
+- the chezmoi source on this Mac is at that commit, with nothing uncommitted,
+  both before `verify.sh` runs and after it,
+- a tag can be pushed from this session, and
+- `verify.sh` passes here, which is the real-hardware half.
 
-A branch run gives the VM result only. The real-hardware half still happens
-after the merge is applied to this Mac: run `verify.sh` here, then record both
-results against the `main` commit in
-[The certified run](#the-certified-run), in one follow-up commit.
+It then asks what triggered the run, shows the tag, creates it on the commit
+and pushes it. It certifies the tip of `main` unless `--commit` names another
+commit, and reads the newest full run unless `--log` names another bootstrap
+log. If the trees differ, certify `main` and record that run.
+
+Nothing is committed, so no pull request is needed to record a certification.
+Write a defect the run found into [What a clean machine found](#what-a-clean-machine-found);
+that part is still a change to this file.
 
 Verify **outcomes, not exit codes**. A script returning zero has proved nothing;
 that is the entire argument of [Certification](#certification), and it is why
@@ -585,6 +598,7 @@ dot_claude/CLAUDE.md               Claude Code: global communication preferences
 certification/
   certify.sh                       host side: clone a VM, rebuild it, verify it
   verify.sh                        guest side: assert outcomes, not exit codes
+  record.sh                        host side: tag the certified commit with the result
   logs/                            transcripts (gitignored)
 ```
 
@@ -890,6 +904,7 @@ command at the top.
 | Monthly | `./certification/verify.sh` | The stronger audit: proves the machine still matches the repo in outcome, not just in file contents. |
 | Per project | `asdf install` | Runtimes are project-scoped. Never on a schedule. |
 | After any bootstrap-path change | `./certification/certify.sh` | See [Re-certify the rebuild](#re-certify-the-rebuild). |
+| After a certified run is merged and applied here | `./certification/record.sh` | Tags the commit with the result. See [The certified run](#the-certified-run). |
 
 ---
 
@@ -932,47 +947,53 @@ throwaway macOS VM, as a user who is not `james`.
 
 ### The certified run
 
-| | |
-| --- | --- |
-| Date | 2026-11-23 |
-| Commit | `0248e29` |
-| Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
-| VM result | **51 passed, 0 failed, 0 warnings, 2 excluded** |
-| Real-hardware result, Neuromancer | **51 passed, 0 failed, 0 warnings, 0 excluded** |
-| Real-hardware result, cortex | **51 passed, 0 failed, 0 warnings, 0 excluded** |
+Each certification is an annotated tag on the commit it certifies, named
+`certified/<date>-<short commit>`. The tag's message holds the result:
 
-Certification is two halves, and both are recorded above. `certify.sh` proves
+```bash
+git fetch --tags
+git tag -l 'certified/*' --sort=-creatordate | head -1    # the latest
+git tag -n99 -l 'certified/*'                             # all of them, with results
+```
+
+```text
+Certified 0248e29 on 2026-11-23
+
+VM result:            51 passed, 0 failed, 0 warnings, 2 excluded
+Real-hardware result: 51 passed, 0 failed, 0 warnings, 0 excluded
+
+Guest:        macOS 27.0.1, 6 CPU / 8 GB / 100 GB, user certuser
+Host:         Neuromancer, macOS 27.2.1
+Built from:   branch fix/homebrew-path-in-ssh-commands at 2b947d7
+Tree:         1eb83e81fa018a022927a871678fbc6dac43537e
+Triggered by: .zshenv puts Homebrew and asdf on PATH for a command run over ssh
+```
+
+Certification is two halves, and a tag records both. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
 without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
-This run was triggered by a change to `.zshenv` and three new checks in
-`verify.sh`: `0248e29` puts Homebrew, asdf's shims and `~/.local/bin` on `PATH`
-in a zsh that is not a login shell, which is what `ssh cortex <command>` runs.
-The VM result is from a run of the branch before it merged, at `2b947d7`. The
-tree on `main` after the merge, `1eb83e8`, is the tree that run built, so it
-counts for `0248e29`.
+`certification/record.sh` makes the tag, and makes it only when both halves
+are about the same commit; [Re-certify the rebuild](#re-certify-the-rebuild)
+says when to run it. A tag that exists therefore always means a full
+certification. `Built from` names what the VM cloned: `main`, or the branch
+and the commit it was at before a rebase merge gave the change a new commit.
 
-The new checks start a zsh with sshd's `PATH` and no login. On cortex the
-change was also checked the way it is used: `ssh cortex 'command -v chezmoi'`
-found nothing before the apply and `/opt/homebrew/bin/chezmoi` after it.
+The real-hardware half is Neuromancer's, and `record.sh` stops on any other
+Mac. cortex is not recorded: after an apply there, run `verify.sh` on it and
+expect the same counts.
 
-Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
-`6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
-Rosetta check), `4ba567f` (40/0/0 with 2 excluded, the first on macOS 27),
-`fb5e1d8` (42/0/0 with 2 excluded, after `verify.sh` gained the check that
-`python3` resolves to an asdf shim in an interactive login shell), `b93f027`
-(42/0/0 with 2 excluded, after `certify.sh` gained `--branch`; the first
-certified from a branch run), `07e4f13` (42/0/0 with 2 excluded, after a fix
-to how `certify.sh` finds out whether a VM exists) and `faed258` (42/0/0 with
-2 excluded, after the repo was renamed to `mac-dev-config`) and `1d8fe90`
-(48/0/0 with 2 excluded, after script 07 and its six checks were added; the
-first recorded on both Macs, where the apply turned Remote Login on from off,
-the step the VM cannot reach because its base image has it on already) and
-`2fd42c9` (48/0/0 with 2 excluded, after script 07's rollback was made to run
-when a message cannot be written or a second signal arrives; its failure paths
-were tested against stubs, and the cases are in pull request 41).
-The count changes as `verify.sh` gains or drops checks; that is
+The tags are not signed. A ruleset on `certified/*` stops one being deleted or
+moved, so a record cannot change after it is made. To correct a wrong tag,
+turn the ruleset off first, on purpose.
+
+The certifications made before `record.sh` existed were tagged by hand from
+the table this section used to hold. Their messages have the same fields, say
+`not recorded` where the table did not have a value, and end with a line saying
+they were tagged by hand. The two oldest are VM runs with no real-hardware
+half. The three newest also give cortex's result. The count of checks
+changes from tag to tag as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
 The two exclusions are the things an Apple Silicon VM structurally cannot
