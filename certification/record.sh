@@ -19,7 +19,7 @@
 # Usage:
 #   ./certification/record.sh                         # record the newest full run
 #   ./certification/record.sh --dry-run               # show the tag, create nothing
-#   ./certification/record.sh --reason "<one line>"   # what triggered the run
+#   ./certification/record.sh --reason "<one line>"   # a trigger no commit records
 #   ./certification/record.sh --log <bootstrap log>   # record another run
 #   ./certification/record.sh --commit <sha>          # a commit other than main's tip
 #
@@ -243,9 +243,8 @@ SOURCE="$(chezmoi source-path)" || die "Could not ask chezmoi for its source pat
 # `chezmoi status` that is empty, for a tree the VM never built.
 #
 # Asked twice: here, and again just before the tag is made. verify.sh takes
-# minutes and the reason prompt waits for as long as it is left. A
-# `chezmoi update` in that time would have verify.sh check a newer commit, and
-# its result would be recorded against this one.
+# minutes. A `chezmoi update` in that time would have verify.sh check a newer
+# commit, and its result would be recorded against this one.
 check_source() {
   local head changes
   head="$(git -C "$SOURCE" rev-parse HEAD)" || die "The chezmoi source at $SOURCE is not a git checkout."
@@ -298,14 +297,16 @@ HOST_COUNTS="$(verify_counts "$HOST_LOG")"
 [ "$(counts_failed "$HOST_COUNTS")" = "0" ] && [ "$HOST_STATUS" -eq 0 ] \
   || die "verify.sh failed on $HOST_NAME: $(counts_sentence "$HOST_COUNTS"). See $HOST_LOG"
 
-# --- 7. What triggered the run ------------------------------------------------
+# --- 7. What triggered the run, when no commit says ---------------------------
 
-if [ "$REASON_GIVEN" -eq 0 ]; then
-  [ -t 0 ] || die "No --reason was given, and there is no terminal to ask at."
-  printf '\nWhat triggered this certification? One line: ' >&2
-  IFS= read -r REASON || true
+# Not asked for. What changed since the last certification is in the commits
+# between the two tags: git log <previous tag>..<this tag>. --reason is for a
+# trigger that is in no commit, such as a macOS upgrade, a new base VM, or a
+# second run of a commit that has not changed. The tag then gets one more
+# line, "Triggered by:".
+if [ "$REASON_GIVEN" -eq 1 ]; then
+  one_line "$REASON" || die "The reason has to be one line of text, and not empty."
 fi
-one_line "$REASON" || die "The reason has to be one line of text, and not empty."
 
 # --- 8. The tag ---------------------------------------------------------------
 
@@ -330,8 +331,8 @@ Guest:        $GUEST
 Host:         $HOST_NAME, macOS $HOST_OS
 Built from:   $BUILT_FROM
 Tree:         $TREE
-Triggered by: $REASON
 EOF
+[ "$REASON_GIVEN" -eq 0 ] || printf 'Triggered by: %s\n' "$REASON" >>"$MESSAGE_FILE"
 
 log "The tag"
 printf '   %s -> %s\n\n' "$TAG" "$COMMIT" >&2
