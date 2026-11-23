@@ -17,7 +17,10 @@
 # ahead of this one could set a keyword first, and sshd keeps the first value.
 # If either check fails, the previous file goes back (or the new one is
 # removed), Remote Login is left as it was, and the apply fails, so the script
-# runs again on the next one.
+# runs again on the next one. The same happens if the script stops for any
+# other reason between installing the file and passing both checks: a command
+# that fails, or an interrupt. The exit trap does it, so no path can leave an
+# unchecked drop-in behind.
 #
 # Nothing is reloaded. launchd starts a new sshd for each connection, and each
 # one reads the configuration and the key file afresh. A session that is
@@ -76,19 +79,18 @@ if [ -f "$KEYS" ]; then
   done <"$KEYS"
 fi
 
+# `sshd -t` fails without host keys, and a Mac that has never had Remote Login
+# on has none: macOS makes them at the first connection. `ssh-keygen -A` makes
+# the ones that are missing and leaves the rest alone. Done before the drop-in
+# is touched, so a failure here changes nothing.
+sudo ssh-keygen -A >/dev/null
+
 new="$(mktemp)"
 backup="$(mktemp)"
-trap 'rm -f "$new" "$backup"' EXIT
-cat >"$new" <<'EOF_SSHD'
-{{ include "sshd-mac.conf" -}}
-EOF_SSHD
-
 had_previous=false
-if sudo test -f "$TARGET"; then
-  had_previous=true
-  # shellcheck disable=SC2024  # The copy is this user's temporary file.
-  sudo cat "$TARGET" >"$backup"
-fi
+# True from just before the new drop-in is installed until both checks have
+# passed. While it is true, leaving the script puts the previous file back.
+unchecked=false
 
 restore() {
   if [ "$had_previous" = true ]; then
@@ -100,17 +102,37 @@ restore() {
   fi
 }
 
-echo ">> Installing $TARGET..."
-sudo install -m 0644 -o root -g wheel "$new" "$TARGET"
+# Runs on every exit, whatever the cause. It does not call `exit`, so the
+# script's own exit status stands.
+on_exit() {
+  if [ "$unchecked" = true ]; then
+    unchecked=false
+    echo "❌ Stopped before the new drop-in passed its checks." >&2
+    restore || echo "❌ Could not put the previous $TARGET back. Check it by hand: sudo $SSHD -t" >&2
+  fi
+  rm -f "$new" "$backup"
+}
+trap on_exit EXIT
+# A signal ends the script through `exit`, so the EXIT trap runs for it too.
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
-# `sshd -t` fails without host keys, and a Mac that has never had Remote Login
-# on has none: macOS makes them at the first connection. `ssh-keygen -A` makes
-# the ones that are missing and leaves the rest alone.
-sudo ssh-keygen -A >/dev/null
+cat >"$new" <<'EOF_SSHD'
+{{ include "sshd-mac.conf" -}}
+EOF_SSHD
+
+if sudo test -f "$TARGET"; then
+  # shellcheck disable=SC2024  # The copy is this user's temporary file.
+  sudo cat "$TARGET" >"$backup"
+  had_previous=true
+fi
+
+echo ">> Installing $TARGET..."
+unchecked=true
+sudo install -m 0644 -o root -g wheel "$new" "$TARGET"
 
 if ! sudo "$SSHD" -t; then
   echo "❌ sshd -t rejects the configuration with the new drop-in." >&2
-  restore
   exit 1
 fi
 
@@ -119,7 +141,10 @@ fi
 # versions and as written in the manual in others. sshd -T does not apply
 # AllowUsers to the connection named by -C; it prints the list, and the list
 # is what is checked.
-effective="$(sudo "$SSHD" -T -C "user=$USER_NAME,host=client,addr=192.168.0.2")"
+if ! effective="$(sudo "$SSHD" -T -C "user=$USER_NAME,host=client,addr=192.168.0.2")"; then
+  echo "❌ sshd -T could not print the configuration with the new drop-in." >&2
+  exit 1
+fi
 wrong=()
 for want in \
   'authenticationmethods publickey' \
@@ -141,9 +166,10 @@ if [ "${#wrong[@]}" -gt 0 ]; then
   echo "❌ sshd does not report these settings with the drop-in installed:" >&2
   printf '     %s\n' "${wrong[@]}" >&2
   echo "   Another file in /etc/ssh/sshd_config.d probably sets them first." >&2
-  restore
   exit 1
 fi
+
+unchecked=false
 
 echo ">> sshd accepts public keys only, from the LAN, with forwarding off."
 
