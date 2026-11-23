@@ -15,3 +15,29 @@ if /usr/libexec/java_home >/dev/null 2>&1; then
   export PATH="$JAVA_HOME/bin:$PATH"
 fi
 
+# Homebrew, asdf's shims and ~/.local/bin, for a zsh that is not a login shell.
+#
+# sshd runs `ssh cortex <command>` as `zsh -c`, which is neither a login shell
+# nor interactive: it reads this file and nothing else. Without this block it
+# gets the system PATH only, and chezmoi, gh and Homebrew's git are not found.
+#
+# A login shell is left to .zprofile, which does the same three things. It
+# cannot be done here for one: /etc/zprofile runs path_helper after this file
+# and moves the system directories back to the front.
+#
+# Guarded like .zprofile, because chezmoi writes this file before Homebrew
+# exists. Keep the two in step.
+if [[ ! -o login ]]; then
+  [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+
+  if [[ -d "/opt/homebrew/opt/asdf/bin" ]]; then
+    export ASDF_DATA_DIR="$HOME/.asdf"
+    export PATH="/opt/homebrew/opt/asdf/bin:$ASDF_DATA_DIR/shims:$PATH"
+  fi
+
+  export PATH="$HOME/.local/bin:$PATH"
+
+  # A zsh started from a shell that already has these would otherwise list
+  # each directory twice. -U keeps the first of each.
+  typeset -U path
+fi
