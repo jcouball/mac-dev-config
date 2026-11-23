@@ -727,6 +727,42 @@ copy of the key file is useless on its own. Nothing here can enforce that.
 tart gives its VMs. That is the certification VM's account. No Mac has it, so
 on a Mac the entry admits nobody.
 
+### After a restart
+
+FileVault is on, so after a restart the disk stays locked until someone enters
+the account password. Until then a key login is refused. The Mac can be
+unlocked over ssh, from a terminal:
+
+```text
+$ ssh cortex
+This system is locked. To unlock it, use a local
+account name and password. Once successfully
+unlocked, you will be able to connect normally.
+(james@cortex.local) Password:
+System successfully unlocked.
+You may now use SSH to authenticate normally.
+```
+
+Type the Mac account password. The session does not return after the last
+line: press Ctrl-C and run `ssh cortex` again, which logs in with the key.
+
+- **The password unlocks the disk and opens no session.** This is the one
+  prompt the keys-only setting does not cover.
+- **It needs a terminal.** A command that cannot ask for the password, such as
+  one a script runs, gets `Permission denied`.
+- **The disk stays unlocked until the next restart.** Logging out at the
+  desktop does not lock it again, so a key login works with nobody logged in.
+- **It needs the network before login.** Apple supports this on a Mac with
+  Apple silicon running macOS 26 or later, with Remote Login on, over Ethernet
+  or a Wi-Fi network that is open or uses WPA2 with a password.
+
+Tested on cortex on 2026-11-23, running macOS 27.2.1 on Ethernet.
+
+This is also how to reach cortex after a power cut. It is set to start up when
+power returns ("Start up automatically after a power failure" in System
+Settings, Energy; `pmset -g` shows `autorestart 1`). That setting was made by
+hand and nothing in this repo sets it. Once it has started, unlock it as above.
+
 ### Set up a client
 
 The public keys are already in the repo, so a client needs only its own copy
@@ -898,27 +934,28 @@ throwaway macOS VM, as a user who is not `james`.
 
 | | |
 | --- | --- |
-| Date | 2026-11-22 |
-| Commit | `2fd42c9` |
+| Date | 2026-11-23 |
+| Commit | `0248e29` |
 | Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
-| VM result | **48 passed, 0 failed, 0 warnings, 2 excluded** |
-| Real-hardware result, Neuromancer | **48 passed, 0 failed, 0 warnings, 0 excluded** |
-| Real-hardware result, cortex | **48 passed, 0 failed, 0 warnings, 0 excluded** |
+| VM result | **51 passed, 0 failed, 0 warnings, 2 excluded** |
+| Real-hardware result, Neuromancer | **51 passed, 0 failed, 0 warnings, 0 excluded** |
+| Real-hardware result, cortex | **51 passed, 0 failed, 0 warnings, 0 excluded** |
 
 Certification is two halves, and both are recorded above. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
 without `SKIP_MAS`, proves the three entries a VM structurally cannot reach —
 so nothing is excluded on that side, and nothing is taken on trust.
 
-This run was triggered by a change to script 07's rollback: `2fd42c9` makes
-it run when a message cannot be written or a second signal arrives, and say so
-when it fails. The VM result is from a run of the branch before it merged, at
-`99d1225`. The tree on `main` after the merge, `0ce02cb`, is the tree that run
-built, so it counts for `2fd42c9`.
+This run was triggered by a change to `.zshenv` and three new checks in
+`verify.sh`: `0248e29` puts Homebrew, asdf's shims and `~/.local/bin` on `PATH`
+in a zsh that is not a login shell, which is what `ssh cortex <command>` runs.
+The VM result is from a run of the branch before it merged, at `2b947d7`. The
+tree on `main` after the merge, `1eb83e8`, is the tree that run built, so it
+counts for `0248e29`.
 
-On each Mac the apply ran script 07 again with the drop-in already in place.
-The VM and both Macs exercise only the script's success path. Its failure
-paths were tested against stubs, and the cases are in pull request 41.
+The new checks start a zsh with sshd's `PATH` and no login. On cortex the
+change was also checked the way it is used: `ssh cortex 'command -v chezmoi'`
+found nothing before the apply and `/opt/homebrew/bin/chezmoi` after it.
 
 Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
 `6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
@@ -931,7 +968,10 @@ to how `certify.sh` finds out whether a VM exists) and `faed258` (42/0/0 with
 2 excluded, after the repo was renamed to `mac-dev-config`) and `1d8fe90`
 (48/0/0 with 2 excluded, after script 07 and its six checks were added; the
 first recorded on both Macs, where the apply turned Remote Login on from off,
-the step the VM cannot reach because its base image has it on already).
+the step the VM cannot reach because its base image has it on already) and
+`2fd42c9` (48/0/0 with 2 excluded, after script 07's rollback was made to run
+when a message cannot be written or a second signal arrives; its failure paths
+were tested against stubs, and the cases are in pull request 41).
 The count changes as `verify.sh` gains or drops checks; that is
 expected, and is why a tightened check triggers re-certification.
 
