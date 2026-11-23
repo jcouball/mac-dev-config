@@ -54,7 +54,7 @@ CERT_USER="${CERT_USER:-certuser}"
 # unattended over BatchMode SSH; dedicated because the alternative is handing a
 # throwaway VM a key that also opens something real.
 CERT_SSH_KEY="${CERT_SSH_KEY:-$HOME/.ssh/id_ed25519_neuromancer_certvm}"
-REPO="${NEUROMANCER_CONFIG_REPO:-jcouball/neuromancer-config}"
+REPO="${MAC_DEV_CONFIG_REPO:-jcouball/mac-dev-config}"
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-300}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
