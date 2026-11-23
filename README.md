@@ -439,10 +439,10 @@ these hold:
 - a tag can be pushed from this session, and
 - `verify.sh` passes here, which is the real-hardware half.
 
-It then asks what triggered the run, shows the tag, creates it on the commit
-and pushes it. It certifies the tip of `main` unless `--commit` names another
-commit, and reads the newest full run unless `--log` names another bootstrap
-log. If the trees differ, certify `main` and record that run.
+It then shows the tag, creates it on the commit and pushes it. It certifies
+the tip of `main` unless `--commit` names another commit, and reads the newest
+full run unless `--log` names another bootstrap log. If the trees differ,
+certify `main` and record that run.
 
 Nothing is committed, so no pull request is needed to record a certification.
 Write a defect the run found into [What a clean machine found](#what-a-clean-machine-found);
@@ -966,8 +966,13 @@ Guest:        macOS 27.0.1, 6 CPU / 8 GB / 100 GB, user certuser
 Host:         Neuromancer, macOS 27.2.1
 Built from:   branch fix/homebrew-path-in-ssh-commands at 2b947d7
 Tree:         1eb83e81fa018a022927a871678fbc6dac43537e
-Triggered by: .zshenv puts Homebrew and asdf on PATH for a command run over ssh
 ```
+
+What changed between two certifications is in the commits between their tags:
+`git log <older tag>..<newer tag>`. A tag has one more line, `Triggered by:`,
+when `record.sh` was given `--reason "<one line>"`. That is for a trigger no
+commit records: a macOS upgrade, a new base VM, or a second run of a commit
+that has not changed.
 
 Certification is two halves, and a tag records both. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
