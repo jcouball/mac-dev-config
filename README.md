@@ -893,7 +893,7 @@ throwaway macOS VM, as a user who is not `james`.
 | Guest | macOS Golden Gate 27.0.1, 6 CPU / 8 GB / 100 GB, user `certuser` |
 | VM result | **48 passed, 0 failed, 0 warnings, 2 excluded** |
 | Real-hardware result, Neuromancer | **48 passed, 0 failed, 0 warnings, 0 excluded** |
-| Real-hardware result, cortex | **47 passed, 0 failed, 1 warning, 0 excluded** |
+| Real-hardware result, cortex | **48 passed, 0 failed, 0 warnings, 0 excluded** |
 
 Certification is two halves, and both are recorded above. `certify.sh` proves
 the *procedure* against a machine with nothing on it. `verify.sh` run here,
@@ -908,9 +908,9 @@ built, so it counts for `1d8fe90`.
 
 It is the first run recorded on both Macs. On each, the apply turned Remote
 Login on from off, the step the VM cannot reach because its base image has
-Remote Login on already. cortex's warning is a `~/README.md` from 2025, left
-from when this README was deployed to the home directory. It predates the
-change and nothing here writes it.
+Remote Login on already. cortex's first run gave one warning, for a
+`~/README.md` from 2025, left from when this README was deployed to the home
+directory. The file was deleted, and the run recorded above is the one after.
 
 Earlier runs: `4a2974c` (40/0/2 warnings, before the checks were split),
 `6ed8da6` (41/0/2), `0b6a6b3` (41/0/2, on macOS 26, the last run with the
