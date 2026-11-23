@@ -42,7 +42,8 @@
 #   - the chezmoi source on this Mac is at another commit, or has
 #     uncommitted changes, before verify.sh runs or after it
 #   - this session cannot push to GitHub
-#   - verify.sh fails here, or does not run to its end
+#   - verify.sh fails here, does not run to its end, or leaves a check
+#     unmade: a warning or an excluded check
 #
 # The tree comparison is what lets a branch run count. A rebase merge gives the
 # commits new SHAs, so the commit on main is never the commit the VM built. It
@@ -79,7 +80,7 @@ while [ $# -gt 0 ]; do
       REASON_GIVEN=1
       shift
       ;;
-    --help|-h) sed -n '2,49p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
+    --help|-h) sed -n '2,50p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
   esac
   shift
@@ -123,6 +124,14 @@ counts_failed() {
   local passed failed _w
   read -r passed _w failed _w <<<"$1"
   printf '%s' "$failed"
+}
+
+# The warnings and the excluded checks of the same four numbers, added up.
+# Either is a check that was not made.
+counts_unmade() {
+  local passed failed warned excluded _w
+  read -r passed _w failed _w warned _w excluded _w <<<"$1"
+  printf '%s' "$((warned + excluded))"
 }
 
 # Scratch files: the commit's verify.sh, and the tag message.
@@ -231,14 +240,20 @@ TAG="certified/$TODAY-$SHORT"
 # left alone. Anything else, a stable that is not a commit of main above all,
 # means stable has been pushed to by hand, and the script stops before it adds
 # to that.
-STABLE_LINE="$(GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" ls-remote --heads origin refs/heads/stable)" \
+#
+# The ref is spelled out in full, and the answer is still filtered for the one
+# line whose ref is exactly that. ls-remote matches the end of a ref, so
+# refs/heads/stable also returns a branch that is itself named
+# x/refs/heads/stable, and lists it first.
+STABLE_REFS="$(GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" ls-remote --heads origin refs/heads/stable)" \
   || die "Could not ask origin where stable is."
-STABLE_AT="${STABLE_LINE%%[[:space:]]*}"
+# shellcheck disable=SC2016  # awk's $1 and $2 are awk's, not the shell's.
+STABLE_AT="$(awk '$2 == "refs/heads/stable" { print $1 }' <<<"$STABLE_REFS")"
 MOVE_STABLE=1
 if [ -z "$STABLE_AT" ]; then
   echo "   There is no stable branch yet. Recording this creates it." >&2
 elif ! [[ "$STABLE_AT" =~ $SHA_PATTERN ]]; then
-  die "Could not read where stable is from: $STABLE_LINE"
+  die "Could not read where stable is from: $STABLE_REFS"
 elif ! repo cat-file -e "$STABLE_AT^{commit}" 2>/dev/null; then
   die "stable is at $STABLE_AT, a commit this checkout does not have. It is not on main."
 elif ! repo merge-base --is-ancestor "$STABLE_AT" origin/main; then
@@ -369,6 +384,15 @@ HOST_COUNTS="$(verify_counts "$HOST_LOG")"
   || die "verify.sh did not run to its end on $HOST_NAME. See $HOST_LOG"
 [ "$(counts_failed "$HOST_COUNTS")" = "0" ] && [ "$HOST_STATUS" -eq 0 ] \
   || die "verify.sh failed on $HOST_NAME: $(counts_sentence "$HOST_COUNTS"). See $HOST_LOG"
+
+# Nothing left unchecked either. On real hardware a warning or an excluded
+# check is a check that was not made: sshd's settings not read because sudo
+# had lapsed, or a thing this machine turned out not to have. The clean
+# machine excludes some of the same checks, so a tag made here would claim a
+# check that neither half made.
+[ "$(counts_unmade "$HOST_COUNTS")" = "0" ] \
+  || die "verify.sh left checks unmade on $HOST_NAME: $(counts_sentence "$HOST_COUNTS").
+   A certification needs 0 warnings and 0 excluded on real hardware. See $HOST_LOG"
 
 # --- 7. What triggered the run, when no commit says ---------------------------
 
