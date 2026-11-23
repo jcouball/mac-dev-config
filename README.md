@@ -12,7 +12,8 @@ drift; the benefit is that nothing here needs a conditional.
 
 | | |
 | --- | --- |
-| Host | Neuromancer — Apple M2 Max, macOS Golden Gate 27.0.1 |
+| Hosts | Neuromancer — Apple M2 Max, macOS Golden Gate 27.2.1 |
+| | cortex — Apple M4, macOS Golden Gate 27.2.1 |
 | Shell | zsh + powerlevel10k |
 | Terminal | Warp (installed by `.Brewfile`; its settings are not managed here) |
 | Package manager | Homebrew — 83 formulae, 39 casks, 49 VS Code extensions, 14 App Store apps |
