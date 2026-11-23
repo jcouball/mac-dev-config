@@ -528,7 +528,9 @@ these hold:
 - the chezmoi source on this Mac is at that commit, with nothing uncommitted,
   both before `verify.sh` runs and after it,
 - the tag and `stable` can be pushed from this session, and
-- `verify.sh` passes here, which is the real-hardware half.
+- `verify.sh` passes here with 0 warnings and 0 excluded, which is the
+  real-hardware half. A warning or an excluded check there is a check that was
+  not made.
 
 The source has to be on `main` for that: a source on `stable` cannot be at a
 commit that `stable` does not have yet, and the script says so. Commit a
