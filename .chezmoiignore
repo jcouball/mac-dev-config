@@ -1,9 +1,10 @@
 # Source files that must never be deployed to the home directory.
 #
 # Anything in the source root without a leading dot becomes a target: without
-# these lines chezmoi would write ~/README.md, ~/LICENSE.txt and a whole
-# ~/certification directory. Dot-prefixed source entries (.gitattributes,
-# .chezmoiscripts, .chezmoi.toml.tmpl) are ignored by chezmoi automatically.
+# these lines chezmoi would write ~/README.md, ~/LICENSE.txt, ~/sshd-mac.conf
+# and a whole ~/certification directory. Dot-prefixed source entries
+# (.gitattributes, .chezmoiscripts, .chezmoi.toml.tmpl) are ignored by chezmoi
+# automatically.
 
 **/*.plist.base
 bootstrap.sh
@@ -11,3 +12,4 @@ certification
 CLAUDE.md
 LICENSE.txt
 README.md
+sshd-mac.conf

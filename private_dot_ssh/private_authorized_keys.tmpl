@@ -1,0 +1,39 @@
+# Public keys allowed to log in to this Mac over SSH.
+#
+# chezmoi writes this file to ~/.ssh/authorized_keys, the only key file sshd
+# reads (sshd-mac.conf), from private_dot_ssh/private_authorized_keys.tmpl.
+# Deleting a line there and applying revokes that key.
+#
+# PUBLIC KEYS ONLY. The repo is public. The private half is in 1Password and
+# on each client, and is never committed anywhere.
+#
+# One key per line, with these options in front of it:
+#
+#   restrict   no port, agent or X11 forwarding, no pty, no ~/.ssh/rc.
+#   pty        gives back the pty, so `ssh cortex` works by hand.
+#
+# Each Mac has one key, named for the Mac it opens, and gets that key alone:
+# the template picks the line by the machine's name, so cortex's key does not
+# open Neuromancer. Each copy of a private key has a passphrase, which is what
+# makes a copied key file useless. No from= address restriction: AllowUsers in
+# sshd-mac.conf already limits logins to the LAN.
+#
+# README.md, "Remote access over SSH", has the steps to add a Mac and to
+# replace a key.
+#
+# The options must be exactly `restrict` or `restrict,pty`. Script 07 fails the
+# apply to name any other line, and warns while this file has no key line.
+{{ $name := "" }}{{ if hasKey . "computerName" }}{{ $name = lower .computerName }}{{ end }}
+{{- if eq .chezmoi.username "certuser" }}
+# The certification VM. certify.sh logs in with this key before the apply and
+# again after it, so the key prepare-base-vm.sh installed has to survive the
+# apply. Its private half has no passphrase and opens nothing else: this line
+# is written for the account `certuser` only, which no Mac has.
+restrict,pty ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOxbjmOhFDeJ/RvBgEcAuFsEeQgFvyKQoByYfAjIxE+9 id_ed25519_neuromancer_certvm
+{{- else if eq $name "neuromancer" }}
+restrict,pty ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK8GuTHsxuY+hQx0bKJ1JROhPLtQ6xsW5rDl0Dl+Z+V6 id_ed25519_neuromancer
+{{- else if eq $name "cortex" }}
+restrict,pty ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICBxsyafS34//JIe+MggJRD81t7vu3JFCeHI7bIeLGoX id_ed25519_cortex
+{{- else }}
+# No key is listed for a machine named "{{ $name }}", so nobody can log in.
+{{- end }}

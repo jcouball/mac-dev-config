@@ -26,6 +26,37 @@ Host rama
   ControlPath ~/.ssh/cm-%r@%h:%p
   ControlPersist 10m
 
+Host neuromancer
+  HostName neuromancer.local
+  User james
+  IdentityFile ~/.ssh/id_ed25519_neuromancer
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  ForwardAgent no
+  # sshd on the Macs admits IPv4 addresses on the LAN only (sshd-mac.conf), and
+  # a .local name also resolves to IPv6 link-local addresses.
+  AddressFamily inet
+  UseKeychain yes
+  AddKeysToAgent yes
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+
+Host cortex
+  HostName cortex.local
+  User james
+  IdentityFile ~/.ssh/id_ed25519_cortex
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  ForwardAgent no
+  # As for neuromancer: IPv4 only.
+  AddressFamily inet
+  UseKeychain yes
+  AddKeysToAgent yes
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+
 Host 192.168.2.1
   User root
   IdentityFile ~/.ssh/id_rsa_proxmox_admin
