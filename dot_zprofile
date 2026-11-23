@@ -11,7 +11,9 @@
 [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
 
 # Initialize asdf in .zprofile (instead of .zshrc) so that asdf is available in
-# all shells, including non-interactive ones.
+# a non-interactive shell started from a login shell: a git hook, a Makefile.
+# A zsh that no login shell started, such as `ssh cortex <command>`, never reads
+# this file; .zshenv does the same three things for it. Keep the two in step.
 if [[ -d "/opt/homebrew/opt/asdf/bin" ]]; then
   export ASDF_DATA_DIR="$HOME/.asdf"
   export PATH="/opt/homebrew/opt/asdf/bin:$ASDF_DATA_DIR/shims:$PATH"

@@ -342,6 +342,31 @@ case "$login_path" in
   *) bad "asdf shims not on PATH in a login shell" ;;
 esac
 
+# A zsh that is neither a login shell nor interactive, started with the PATH
+# sshd gives a session. That is what `ssh cortex <command>` runs, and it reads
+# .zshenv and nothing else. env -i, because this script's own PATH already has
+# Homebrew and the shims and a child would inherit them.
+bare_env() {
+  env -i HOME="$HOME" USER="${USER:-$(id -un)}" SHELL=/bin/zsh \
+    PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh -c "$1" 2>/dev/null
+}
+
+bare_path="$(bare_env 'printf "%s" "$PATH"')"
+case "$bare_path" in
+  *"/opt/homebrew/bin"*) ok "Homebrew on PATH in a shell that is not a login shell" ;;
+  *) bad "Homebrew not on PATH in a shell that is not a login shell" ".zshenv sets it; \`ssh <host> <command>\` reads nothing else" ;;
+esac
+case "$bare_path" in
+  *"$ASDF_DATA_DIR/shims"*) ok "asdf shims on PATH in a shell that is not a login shell" ;;
+  *) bad "asdf shims not on PATH in a shell that is not a login shell" ;;
+esac
+bare_chezmoi="$(bare_env 'command -v chezmoi')"
+case "$bare_chezmoi" in
+  /opt/homebrew/bin/chezmoi) ok "chezmoi found in a shell that is not a login shell" ;;
+  "") bad "chezmoi not found in a shell that is not a login shell" ;;
+  *)  bad "chezmoi resolves to $bare_chezmoi in a shell that is not a login shell" "expected /opt/homebrew/bin/chezmoi" ;;
+esac
+
 # An interactive login shell, because that is what a terminal opens. It reads
 # .zprofile, where the shims are first added, and then .zshrc, which every
 # interactive shell reads, login or not. The check above cannot see what .zshrc
