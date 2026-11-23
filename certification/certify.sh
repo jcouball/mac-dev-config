@@ -20,8 +20,9 @@
 # THE DEVIATIONS
 #
 # The point of certification is to run what the README says, not a convenient
-# variant, so deviations have to be named. Every run has exactly three, all
-# forced by the platform rather than chosen. A pre-merge run has a fourth:
+# variant, so deviations have to be named. Every run has exactly four. Three
+# are forced by the platform rather than chosen, and the fourth is what makes
+# it a test of a candidate:
 #
 #   1. --promptString  There is no human at the VM's console to answer chezmoi's
 #                      one question, so the machine name is supplied up front.
@@ -35,13 +36,14 @@
 #                      run for minutes at 0% CPU before erroring. Skipping it
 #                      buys back that time. verify.sh still names zoom as an
 #                      unverified entry, so it cannot be quietly forgotten.
-#   4. --branch <name> Only in a run started with --branch. The README's
-#                      command clones main; this one makes chezmoi clone the
-#                      named branch, so a change to the bootstrap path can be
-#                      certified before it merges. Without it the only way to
-#                      certify a change is to merge it first. "Re-certify the
-#                      rebuild" in the README says when such a run counts for
-#                      the merged commit.
+#   4. --branch <name> In every run. The README's command clones stable, the
+#                      branch that holds what has been certified. This one
+#                      clones what is about to be: main, or the branch named
+#                      with --branch, so a change can be certified before it
+#                      merges. Once a run is recorded, stable is moved to the
+#                      commit it built, and the README's command then clones
+#                      the same files. "Re-certify the rebuild" in the README
+#                      says when a branch run counts for the merged commit.
 #
 # Everything else runs exactly as the README publishes it. There is no deviation
 # for staleness any more: chezmoi clones over git, which has no cache, so what
@@ -333,12 +335,14 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
   echo "   Certifying $REPO, branch $TARGET_BRANCH" >&2
   echo "   Without a log, failures have to be inferred from wreckage." >&2
 
-  BRANCH_OPTION="${BRANCH:+--branch $BRANCH }"
+  # Always named, main included. The README's command names stable; left to
+  # itself chezmoi would clone the repo's default branch, and the run would
+  # depend on what that happens to be.
+  BRANCH_OPTION="--branch $TARGET_BRANCH "
 
-  # The three commands from "Rebuild from nothing", verbatim, plus the
-  # deviations named above: three in every run, and --branch in a pre-merge
-  # run. Do not "improve" them here -- the point is to test what the README
-  # says.
+  # The three commands from "Rebuild from nothing", verbatim, plus the four
+  # deviations named above. Do not "improve" them here -- the point is to test
+  # what the README says.
   #
   # NONINTERACTIVE=1 is Homebrew's own documented flag for unattended installs,
   # not a deviation: without a terminal its installer waits for a RETURN that
@@ -479,14 +483,19 @@ if [ "$VERIFY_STATUS" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
   if [ -n "$BRANCH" ]; then
     cat <<EOF
 
-To record this certification: merge '$BRANCH', run 'chezmoi update' on this
-Mac, then run ./certification/record.sh
+To record this certification, merge '$BRANCH', then on this Mac, whose
+chezmoi source follows main:
+
+  chezmoi update
+  ./certification/record.sh
 EOF
   else
     cat <<EOF
 
-To record this certification: run 'chezmoi update' on this Mac if its source is
-not at $BUILT_COMMIT, then run ./certification/record.sh
+To record this certification, on this Mac, whose chezmoi source follows main:
+
+  chezmoi update        # if its source is not at $BUILT_COMMIT
+  ./certification/record.sh
 EOF
   fi
 fi
