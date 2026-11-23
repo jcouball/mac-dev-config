@@ -113,7 +113,8 @@ fi
 
 section "Managed files"
 
-for f in .zshrc .zprofile .zshenv .Brewfile .tool-versions .gitconfig .asdfrc .p10k.zsh; do
+for f in .zshrc .zprofile .zshenv .Brewfile .tool-versions .gitconfig .asdfrc .p10k.zsh \
+         .ssh/config .ssh/authorized_keys; do
   if [ -f "$HOME/$f" ]; then
     ok "~/$f"
   else
@@ -462,6 +463,77 @@ for key in ComputerName HostName LocalHostName; do
   fi
 done
 [ -n "$name" ] || bad "ComputerName is empty"
+
+# --- Remote access over SSH ------------------------------------------------
+
+section "Remote access over SSH"
+
+SRC="$(chezmoi source-path 2>/dev/null || echo "$HOME/.local/share/chezmoi")"
+sshd_dropin=/etc/ssh/sshd_config.d/00-mac-dev-config.conf
+
+if [ -f "$sshd_dropin" ] && cmp -s "$sshd_dropin" "$SRC/sshd-mac.conf"; then
+  ok "$sshd_dropin matches sshd-mac.conf"
+else
+  bad "$sshd_dropin is missing or differs from sshd-mac.conf" "script 07 installs it"
+fi
+
+# What sshd will do, not what the file says: another drop-in could set a
+# keyword first. sshd -T reads the host keys, so it needs root. Lowercased
+# before comparing, because which case sshd prints its keywords in depends on
+# the version.
+if sudo -n true 2>/dev/null; then
+  effective="$(sudo /usr/sbin/sshd -T -C "user=$(id -un),host=client,addr=192.168.0.2" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  wrong=""
+  for want in \
+    'authenticationmethods publickey' \
+    'pubkeyauthentication yes' \
+    'passwordauthentication no' \
+    'kbdinteractiveauthentication no' \
+    'permitrootlogin no' \
+    'disableforwarding yes' \
+    'authorizedkeysfile .ssh/authorized_keys' \
+    'allowusers james@192.168.0.0/16' \
+    'allowusers certuser@192.168.64.0/24'; do
+    printf '%s\n' "$effective" | grep -qxF "$want" || wrong="$wrong [$want]"
+  done
+  allow_n="$(printf '%s\n' "$effective" | grep -c '^allowusers ' || true)"
+  [ "$allow_n" -eq 2 ] || wrong="$wrong [two allowusers entries, not $allow_n]"
+  if [ -z "$effective" ]; then
+    bad "sshd -T printed nothing" "the configuration may not parse: sudo sshd -t"
+  elif [ -z "$wrong" ]; then
+    ok "sshd accepts public keys only, from the LAN, with root login and forwarding off"
+  else
+    bad "sshd's effective settings are missing:$wrong"
+  fi
+else
+  caution "sshd's effective settings not read" "they need root: run 'sudo -v' and then this script again"
+fi
+
+# launchd has the service only while Remote Login is on.
+if launchctl print system/com.openssh.sshd >/dev/null 2>&1; then
+  ok "Remote Login is on"
+else
+  bad "Remote Login is off" "script 07 turns it on"
+fi
+
+# Every key line carries `restrict`, and there is at least one. A line without
+# it would be a key that can forward ports; no line at all means the machine's
+# name has no key in private_authorized_keys.tmpl and nobody can log in.
+keys_file="$HOME/.ssh/authorized_keys"
+if [ -f "$keys_file" ]; then
+  key_lines="$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$keys_file" || true)"
+  key_n="$(printf '%s' "$key_lines" | grep -c . || true)"
+  loose_n="$(printf '%s' "$key_lines" | grep -c -v -E '^restrict(,pty)? (ssh-|ecdsa-|sk-)' || true)"
+  if [ "$key_n" -eq 0 ]; then
+    bad "no key in ~/.ssh/authorized_keys" "private_authorized_keys.tmpl has no key for this machine's name"
+  elif [ "$loose_n" -gt 0 ]; then
+    bad "$loose_n line(s) in ~/.ssh/authorized_keys without restrict or restrict,pty"
+  else
+    ok "$key_n key(s) in ~/.ssh/authorized_keys, each with restrict"
+  fi
+else
+  bad "~/.ssh/authorized_keys missing" "chezmoi writes it from private_authorized_keys.tmpl"
+fi
 
 # --- Summary ---------------------------------------------------------------
 

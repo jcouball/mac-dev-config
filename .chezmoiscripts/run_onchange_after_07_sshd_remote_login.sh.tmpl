@@ -1,0 +1,181 @@
+#!/bin/bash
+#
+# Restrict sshd to key logins from the LAN, then turn Remote Login on.
+#
+# macOS ships with Remote Login off, and its sshd accepts the account
+# password. A session logs in as an administrator, so this script installs
+# sshd-mac.conf as a drop-in that allows public keys alone, from
+# ~/.ssh/authorized_keys, which chezmoi writes from
+# private_dot_ssh/private_authorized_keys.tmpl. Remote Login goes on last, once
+# sshd is known to refuse passwords.
+#
+# THE `after_` ATTRIBUTE IS REQUIRED. Passwords go off here, so the key file
+# has to be in place first, and chezmoi writes it before `after_` scripts run.
+#
+# THE DROP-IN IS CHECKED IN PLACE AND ROLLED BACK. `sshd -t` has to accept it,
+# and `sshd -T` has to report the settings it is for. A drop-in that sorts
+# ahead of this one could set a keyword first, and sshd keeps the first value.
+# If either check fails, the previous file goes back (or the new one is
+# removed), Remote Login is left as it was, and the apply fails, so the script
+# runs again on the next one.
+#
+# Nothing is reloaded. launchd starts a new sshd for each connection, and each
+# one reads the configuration and the key file afresh. A session that is
+# already open keeps its own process, so an apply over ssh finishes.
+#
+# Remote Login is turned on with launchctl, not `systemsetup -setremotelogin
+# on`: systemsetup needs Full Disk Access for the terminal, which a terminal on
+# a real Mac does not have unless it was granted by hand.
+#
+# The files are embedded or hashed below, so editing either re-runs this, as
+# does applying to another account or machine.
+# key file hash: {{ include "private_dot_ssh/private_authorized_keys.tmpl" | sha256sum }}
+# rendered for: {{ .chezmoi.username }} on {{ if hasKey . "computerName" }}{{ .computerName }}{{ else }}(unset){{ end }}
+
+set -euo pipefail
+
+if [ "$(id -u)" -eq 0 ]; then
+  echo "❌ Do not run 'sudo chezmoi apply'." >&2
+  echo "   Instead:  sudo -v && chezmoi apply" >&2
+  exit 1
+fi
+
+SSHD=/usr/sbin/sshd
+TARGET=/etc/ssh/sshd_config.d/00-mac-dev-config.conf
+SERVICE=system/com.openssh.sshd
+SERVICE_PLIST=/System/Library/LaunchDaemons/ssh.plist
+KEYS="$HOME/.ssh/authorized_keys"
+USER_NAME="$(id -un)"
+
+if ! sudo -n true 2>/dev/null && [ ! -t 0 ]; then
+  echo "❌ Configuring sshd needs sudo, and there is no terminal to prompt on." >&2
+  echo "   Run 'sudo -v' first, then 'chezmoi apply' -- NOT 'sudo chezmoi apply'." >&2
+  exit 1
+fi
+
+# The key lines. A line is options, a key type and the key, so three fields at
+# least, and the options must be exactly `restrict` or `restrict,pty`. Any
+# other line is named at the end and fails the apply: chezmoi has already
+# written it to the key file, so a line with other options is live until it is
+# fixed.
+key_count=0
+rejected=()
+if [ -f "$KEYS" ]; then
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    read -r -a fields <<<"$line"
+    if [ "${#fields[@]}" -ge 3 ] &&
+       { [ "${fields[0]}" = restrict ] || [ "${fields[0]}" = restrict,pty ]; } &&
+       [[ "${fields[1]}" =~ ^(ssh-|ecdsa-|sk-) ]]; then
+      key_count=$((key_count + 1))
+    else
+      rejected+=("$line")
+    fi
+  done <"$KEYS"
+fi
+
+new="$(mktemp)"
+backup="$(mktemp)"
+trap 'rm -f "$new" "$backup"' EXIT
+cat >"$new" <<'EOF_SSHD'
+{{ include "sshd-mac.conf" -}}
+EOF_SSHD
+
+had_previous=false
+if sudo test -f "$TARGET"; then
+  had_previous=true
+  # shellcheck disable=SC2024  # The copy is this user's temporary file.
+  sudo cat "$TARGET" >"$backup"
+fi
+
+restore() {
+  if [ "$had_previous" = true ]; then
+    sudo install -m 0644 -o root -g wheel "$backup" "$TARGET"
+    echo "   Restored the previous $TARGET." >&2
+  else
+    sudo rm -f "$TARGET"
+    echo "   Removed $TARGET." >&2
+  fi
+}
+
+echo ">> Installing $TARGET..."
+sudo install -m 0644 -o root -g wheel "$new" "$TARGET"
+
+# `sshd -t` fails without host keys, and a Mac that has never had Remote Login
+# on has none: macOS makes them at the first connection. `ssh-keygen -A` makes
+# the ones that are missing and leaves the rest alone.
+sudo ssh-keygen -A >/dev/null
+
+if ! sudo "$SSHD" -t; then
+  echo "❌ sshd -t rejects the configuration with the new drop-in." >&2
+  restore
+  exit 1
+fi
+
+# What sshd will use for this account, not the text of the file. Compared
+# without regard to case: sshd prints the keywords in lower case in some
+# versions and as written in the manual in others. sshd -T does not apply
+# AllowUsers to the connection named by -C; it prints the list, and the list
+# is what is checked.
+effective="$(sudo "$SSHD" -T -C "user=$USER_NAME,host=client,addr=192.168.0.2")"
+wrong=()
+for want in \
+  'authenticationmethods publickey' \
+  'pubkeyauthentication yes' \
+  'passwordauthentication no' \
+  'kbdinteractiveauthentication no' \
+  'permitrootlogin no' \
+  'disableforwarding yes' \
+  'authorizedkeysfile .ssh/authorized_keys' \
+  'allowusers james@192.168.0.0/16' \
+  'allowusers certuser@192.168.64.0/24'; do
+  grep -qixF "$want" <<<"$effective" || wrong+=("$want")
+done
+allow_count="$(grep -ci '^allowusers ' <<<"$effective" || true)"
+if [ "$allow_count" -ne 2 ]; then
+  wrong+=("exactly two allowusers entries (sshd reports $allow_count)")
+fi
+if [ "${#wrong[@]}" -gt 0 ]; then
+  echo "❌ sshd does not report these settings with the drop-in installed:" >&2
+  printf '     %s\n' "${wrong[@]}" >&2
+  echo "   Another file in /etc/ssh/sshd_config.d probably sets them first." >&2
+  restore
+  exit 1
+fi
+
+echo ">> sshd accepts public keys only, from the LAN, with forwarding off."
+
+# Remote Login. `launchctl print` finds the service only when it is loaded,
+# which is what "on" means: launchd is listening on port 22. `enable` clears
+# the disabled flag ssh.plist ships with, so the service loads at every boot;
+# `bootstrap` loads it now.
+if launchctl print "$SERVICE" >/dev/null 2>&1; then
+  echo ">> Remote Login is already on."
+else
+  echo ">> Turning Remote Login on..."
+  sudo launchctl enable "$SERVICE"
+  sudo launchctl bootstrap system "$SERVICE_PLIST"
+  if ! launchctl print "$SERVICE" >/dev/null 2>&1; then
+    echo "❌ Remote Login did not come on: launchd has no $SERVICE." >&2
+    exit 1
+  fi
+  echo ">> Remote Login is on."
+fi
+
+if [ "${#rejected[@]}" -gt 0 ]; then
+  echo "❌ These lines in $KEYS have options other than exactly restrict or" >&2
+  echo "   restrict,pty, or are not a whole key. Fix them in" >&2
+  echo "   private_dot_ssh/private_authorized_keys.tmpl and apply again:" >&2
+  printf '     %s\n' "${rejected[@]}" >&2
+  exit 1
+fi
+
+if [ "$key_count" -eq 0 ]; then
+  echo "⚠️  No key lines in $KEYS, so nobody can log in over ssh." >&2
+  echo "   private_dot_ssh/private_authorized_keys.tmpl has no key for this" >&2
+  echo "   machine's name. README, \"Add a Mac\", has the steps." >&2
+else
+  echo ">> $key_count key(s) authorized in $KEYS."
+fi

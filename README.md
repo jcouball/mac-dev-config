@@ -32,6 +32,7 @@ drift; the benefit is that nothing here needs a conditional.
   - [The stack](#the-stack) — the layers, and who owns what
   - [Repository layout](#repository-layout) — every file, and two path traps
   - [Which shell](#which-shell)
+  - [Remote access over SSH](#remote-access-over-ssh) — key-only logins from the LAN
   - [Recreating this repo from scratch](#recreating-this-repo-from-scratch) — not the machine
   - [How often to run what](#how-often-to-run-what)
 - **Why it is the way it is**
@@ -61,7 +62,8 @@ chezmoi init --apply jcouball/mac-dev-config
 ```
 
 Step 3 asks one question — what this machine is called — and then does the rest:
-the Brewfile, the runtimes, every config file, the JDK link.
+the Brewfile, the runtimes, every config file, the JDK link, and Remote Login
+restricted to keys.
 
 **Sign in to iCloud and the App Store first**, if you want the App Store apps.
 They are separate sign-ins and only the second satisfies `mas`. Skipping it
@@ -79,6 +81,10 @@ Afterwards, by hand — the parts a script cannot do:
 2. **Sign in to 1Password** and enable its CLI integration, if you use the
    `op`-templated files — see [Secrets](#secrets).
 3. **Sign in to Telegram** by scanning its QR code from the phone app.
+4. **Copy in the SSH keys this Mac logs in with.** The rebuilt Mac accepts
+   logins at once, because its public key is in this repo. To log in to the
+   other machines it needs their private keys from 1Password — see
+   [Set up a client](#set-up-a-client).
 
 ### Why three commands and not one
 
@@ -532,8 +538,9 @@ this machine that isn't in the repo, the system has a hole in it.
 ```text
 README.md                          this document (ignored, not deployed)
 LICENSE.txt                        MIT (ignored)
+sshd-mac.conf                      sshd settings; script 07 installs it (ignored)
 .chezmoi.toml.tmpl                 asks the machine's name once, at init
-.chezmoiignore                     keeps the four above out of the home directory
+.chezmoiignore                     keeps the ignored files out of the home directory
 .gitattributes                     * text=auto eol=lf
 
 dot_Brewfile                       83 formulae, 39 casks, 49 extensions, 14 App Store apps
@@ -550,7 +557,8 @@ dot_profile / dot_bash_profile / dot_bashrc    bash equivalents
 
 dot_gitconfig                      identity, editor, aliases
 dot_gitignore / dot_gitignore_global
-private_dot_ssh/private_config     SSH config; the keys themselves are not managed
+private_dot_ssh/private_config     SSH config; the private keys are not managed
+private_dot_ssh/private_authorized_keys.tmpl   the public key that opens this Mac
 dot_config/topgrade.toml           update policy
 dot_homebrew/brew.env              HOMEBREW_NO_ANALYTICS
 dot_pip/pip.conf
@@ -567,6 +575,7 @@ dot_claude/CLAUDE.md               Claude Code: global communication preferences
   run_onchange_after_04_asdf_tool_install.sh.tmpl                  the runtimes themselves
   run_onchange_after_05_link_openjdk.sh.tmpl                       makes Homebrew's openjdk visible to macOS
   run_onchange_after_06_install_amphetamine_power_protect.sh.tmpl  Amphetamine Power Protect, laptops only
+  run_onchange_after_07_sshd_remote_login.sh.tmpl                  key-only sshd, then Remote Login on
   run_after_99_brew_bundle_check.sh                                fails the apply if a .Brewfile entry is missing
 
 certification/
@@ -578,8 +587,8 @@ certification/
 ### Two path traps
 
 **Anything in the source root without a leading dot becomes a target.**
-`README.md`, `LICENSE.txt` and `certification/` would all be written into the
-home directory; all three are in `.chezmoiignore`. This is not
+`README.md`, `LICENSE.txt`, `sshd-mac.conf` and `certification/` would all be
+written into the home directory; all four are in `.chezmoiignore`. This is not
 hypothetical — `README.md` was missing from that list for a long time, and
 `~/README.md` was quietly a copy of this file. Dot-prefixed source entries are
 ignored by chezmoi automatically, which is why real dotfiles need the `dot_`
@@ -652,6 +661,145 @@ and not the version pinned in `.tool-versions`.
 files are written by chezmoi during the very first apply, *before* Homebrew and
 the runtimes exist, so an unguarded `eval "$(brew shellenv)"` or
 `xcrun --show-sdk-path` errors on every shell you open during provisioning.
+
+---
+
+## Remote access over SSH
+
+Each Mac can be reached over ssh from the other, and from any machine on the
+LAN that holds its key. A session logs in as `james`, an administrator, so a
+login is close to full control of the machine. Three things limit who gets one,
+the same three [ubuntu-dev-config](https://github.com/jcouball/ubuntu-dev-config)
+and [windows-dev-config](https://github.com/jcouball/windows-dev-config) use:
+
+- **Keys only.** [sshd-mac.conf](sshd-mac.conf) is installed as
+  `/etc/ssh/sshd_config.d/00-mac-dev-config.conf`. It allows public keys alone,
+  so the account password does not open a session, and it refuses root.
+- **Keys from this repo.** chezmoi writes `~/.ssh/authorized_keys` from
+  [private_dot_ssh/private_authorized_keys.tmpl](private_dot_ssh/private_authorized_keys.tmpl).
+  Each line must start with `restrict` or `restrict,pty`; script 07 fails the
+  apply on any other.
+- **LAN only.** macOS has no ufw, so sshd does this itself: `AllowUsers` admits
+  `james` from `192.168.0.0/16` and nobody else. The addresses are IPv4, so a
+  login over IPv6 is refused. The `Host` blocks in
+  [private_dot_ssh/private_config](private_dot_ssh/private_config) set
+  `AddressFamily inet` for that reason: a `.local` name also resolves to IPv6
+  link-local addresses.
+
+Forwarding is off: `DisableForwarding yes` covers ports, the agent, X11, and
+tunnels, and no key option can turn it back on. Use `scp` or `sftp` to move
+files; both still work.
+
+Script 07 installs the drop-in, checks it with `sshd -t` and `sshd -T`, puts
+the previous file back if either fails, and only then turns Remote Login on. It
+uses `launchctl`, not `systemsetup -setremotelogin on`, which needs Full Disk
+Access for the terminal. Nothing is reloaded: launchd starts a new sshd for
+each connection, and each reads the configuration and the key file afresh.
+
+There is one key for each Mac, named for the Mac it opens:
+
+| Key | Opens | Private half is on |
+| --- | --- | --- |
+| `id_ed25519_neuromancer` | Neuromancer | cortex, and 1Password |
+| `id_ed25519_cortex` | cortex | Neuromancer, and 1Password |
+
+The template picks the line by the machine's name, so each Mac accepts its own
+key and no other. Each copy of a private key should have a passphrase, so a
+copy of the key file is useless on its own. Nothing here can enforce that.
+
+**A sleeping Mac does not answer.** Nothing here keeps one awake.
+
+**`AllowUsers` also names `certuser`**, from `192.168.64.0/24`, the network
+tart gives its VMs. That is the certification VM's account. No Mac has it, so
+on a Mac the entry admits nobody.
+
+### Set up a client
+
+The public keys are already in the repo, so a client needs only its own copy
+of the private half. Nothing changes on the Mac being logged in to.
+
+On the client, save the private key from the item of the same name in
+1Password to `~/.ssh`, here for cortex. If 1Password hands the key over without
+a passphrase, give the copy one:
+
+```bash
+chmod 600 ~/.ssh/id_ed25519_cortex
+ssh-keygen -p -f ~/.ssh/id_ed25519_cortex
+```
+
+A Mac set up from this repo already has the `Host` blocks. On another client,
+add one to `~/.ssh/config`. `UseKeychain` is for a Mac, and stores the
+passphrase in the Keychain so commands run without a prompt; leave it out
+elsewhere.
+
+```text
+Host cortex
+  HostName cortex.local
+  User james
+  IdentityFile ~/.ssh/id_ed25519_cortex
+  IdentitiesOnly yes
+  ForwardAgent no
+  AddressFamily inet
+  AddKeysToAgent yes
+  UseKeychain yes
+```
+
+Check from the client: `ssh cortex 'scutil --get ComputerName'` prints
+`cortex`. The first login asks for the passphrase once and stores it.
+
+### Add a Mac
+
+Make a key named for the new Mac. `ssh-keygen` asks for a passphrase; give it
+one.
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_<name> -C id_ed25519_<name>
+```
+
+Store the private key in 1Password as an SSH Key item of the same name. In a
+checkout of this repo, add an `else if` branch for the machine's name to
+`private_dot_ssh/private_authorized_keys.tmpl`, holding
+`restrict,pty` and the contents of `~/.ssh/id_ed25519_<name>.pub`, and add a
+`Host` block to `private_dot_ssh/private_config`. The name is compared in lower
+case with the computer name chezmoi asked for at `chezmoi init`. Push, then
+`chezmoi update` on every Mac.
+
+A Mac whose name has no branch gets a key file with no key: Remote Login is on,
+and nobody can log in. Script 07 warns, and `verify.sh` fails, until the branch
+exists.
+
+### Replace a key
+
+Make the new key as in [Add a Mac](#add-a-mac), under the same name, and
+replace the private key in the 1Password item. In a checkout of this repo,
+replace the key on that Mac's line in
+`private_dot_ssh/private_authorized_keys.tmpl`, then commit and push.
+
+On the Mac the key opens, run `chezmoi update`, at the machine or over a
+session that is already open, because the old key stops working once its line
+is gone. Then repeat [Set up a client](#set-up-a-client) on each client.
+
+### Revoke a key
+
+Delete the key's line from `private_dot_ssh/private_authorized_keys.tmpl` and
+run `chezmoi apply` on the Mac it opens. sshd reads the file on every login, so
+the key stops working at once. A session the key already opened stays open
+until it is closed or its sshd process is killed.
+
+### Change sshd's settings
+
+Edit `sshd-mac.conf`, then `chezmoi apply`. Script 07 installs the file and
+makes the checks above. `certification/verify.sh` makes the same checks, so
+change the settings it expects in the same commit. An edit made directly in
+`/etc/ssh/sshd_config.d/00-mac-dev-config.conf` lasts until the next apply
+that runs the script.
+
+### Turn Remote Login off
+
+System Settings, General, Sharing, Remote Login. Script 07 runs only when
+`sshd-mac.conf`, the key template, the account or the machine's name changes,
+so it does not turn Remote Login back on at the next apply. `verify.sh` reports
+it as a failure while it is off.
 
 ---
 
@@ -942,6 +1090,14 @@ never appear, so `installer` sits at 0% CPU for minutes with no output before
 erroring. `certify.sh` skips it with `HOMEBREW_BUNDLE_CASK_SKIP=zoom` to buy that
 time back; `verify.sh` still lists it as unverified, so it cannot be forgotten.
 
+**The VM never turns Remote Login on.** `certify.sh` drives the VM over ssh, so
+the base image has Remote Login on before the apply starts, and script 07
+finds it on and skips that step. The run does prove the rest: the drop-in is
+installed while the run is logged in, the key file is replaced by the
+template's, and every connection `certify.sh` opens after the apply goes
+through the new settings. Turning Remote Login on from off, without Full Disk
+Access, is proved only by the first apply on a real Mac.
+
 **Certification cannot see upgrade paths at all.** Every run starts from a
 pristine image, so it only ever exercises a *fresh install*. A defect that only
 affects a machine moving from an older state is invisible to it — by
@@ -1041,6 +1197,13 @@ assuming, and stops if Remote Login needs the GUI toggle, which it does on a
 fresh install: `systemsetup` requires Full Disk Access that a new Terminal.app
 does not have.
 
+The public key is also in
+`private_dot_ssh/private_authorized_keys.tmpl`, on the line for the account
+`certuser`. The apply replaces the VM's `~/.ssh/authorized_keys` with that
+file, and `certify.sh` logs in again afterwards. So a new certification key
+has to go in the template in the same change, or the run locks itself out of
+the VM partway through and ends with `verify.sh` unable to connect.
+
 Then **shut down and never boot `neuromancer-base` again.** `certify.sh` clones
 it; booting the base itself lets it drift, at which point it is no longer a
 clean machine.
@@ -1077,7 +1240,9 @@ remedy.
 | SSH private keys, signing keys | **Don't manage it at all.** Encryption reduces exposure; it does not make a public repo an appropriate home for a private key. Provision by hand, per machine. |
 
 `private_dot_ssh/private_config` is managed and public — it is only the SSH
-*config*. The keys it references (`id_rsa_proxmox_admin` and friends) are
+*config*. `private_dot_ssh/private_authorized_keys.tmpl` holds public keys,
+which are safe to publish. The private keys (`id_ed25519_cortex`,
+`id_rsa_proxmox_admin` and friends) are
 deliberately not in this repo, and `dot_gitignore` blocks `.ssh/id_*` and
 `.ssh/*.pub` from ever being committed by accident. Note that this config sets
 `StrictHostKeyChecking no`, which is a convenience on a trusted LAN and a bad
@@ -1124,8 +1289,9 @@ unreachable objects, so the old commit may remain fetchable by SHA afterwards.
 - **macOS system preferences.** No `defaults write` bank here. They are
   reproducible in principle and miserable in practice: undocumented keys, values
   that change between releases, and settings that need a logout to take effect.
-  The computer name is the exception, because a rebuild must not silently answer
-  to the wrong hostname.
+  The computer name is one exception, because a rebuild must not silently
+  answer to the wrong hostname. Remote Login is the other, because the other
+  machines drive this one over ssh.
 - **Per-project dependencies.** Gemfiles, `package.json`, project-level
   `.tool-versions`. These belong to their repos.
 - **App Store app *data*.** The apps are declared; their contents are not.
