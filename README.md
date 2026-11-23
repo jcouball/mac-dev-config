@@ -72,6 +72,10 @@ Step 3 asks one question — what this machine is called — and then does the r
 the Brewfile, the runtimes, every config file, the JDK link, and Remote Login
 restricted to keys.
 
+If step 3 stops because a download failed, run `chezmoi apply`. Every script is
+written to be run again, and a download fails for reasons that have nothing to
+do with this repo.
+
 **Sign in to iCloud and the App Store first**, if you want the App Store apps.
 They are separate sign-ins and only the second satisfies `mas`. Skipping it
 costs nothing else: the run completes, and the 14 App Store entries can be
