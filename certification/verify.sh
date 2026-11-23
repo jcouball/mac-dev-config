@@ -59,6 +59,26 @@ export PATH="$ASDF_DATA_DIR/shims:$PATH"
 
 printf '\033[1mVerifying %s (%s)\033[0m\n' "$(scutil --get ComputerName 2>/dev/null || echo '?')" "$(sw_vers -productVersion)"
 
+# Homebrew's own skip lists, cleared before anything asks brew a question.
+#
+# `brew bundle check` leaves out whatever HOMEBREW_BUNDLE_MAS_SKIP,
+# HOMEBREW_BUNDLE_CASK_SKIP and their kind name. Inherited from the shell that
+# started this script, they would drop entries from the check without a word:
+# the result would say nothing failed and nothing was excluded, about a
+# Brewfile that was only partly checked. The one skip this script allows is the
+# one it sets itself, under SKIP_MAS=1, and reports as excluded.
+#
+# compgen -A variable lists the names that start with the prefix. It is a
+# builtin, so /bin/bash 3.2 has it and no pipeline is involved.
+for skip_name in $(compgen -A variable HOMEBREW_BUNDLE_); do
+  case "$skip_name" in
+    *_SKIP)
+      printf '  %s  %s is set in the environment; ignored\n' "$(dim NOTE)" "$skip_name"
+      unset "$skip_name"
+      ;;
+  esac
+done
+
 # --- Foundations -----------------------------------------------------------
 
 section "Foundations"
