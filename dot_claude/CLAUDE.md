@@ -39,7 +39,7 @@
   Don't use it for Windows testing.
 - Tools are managed by mise: Ruby (MRI, x64-mingw-ucrt, with `ridk`),
   Node, Python, Go, Java, Rust. Git for Windows and `gh` are installed.
-- Machine setup is managed by chezmoi from github.com/jcouball/sophon-config.
+- Machine setup is managed by chezmoi from github.com/jcouball/windows-dev-config.
   The chezmoi source on sophon is `C:\Users\james\.local\share\chezmoi`;
   reach it with `chezmoi git -- <args>`. `C:\Users\james\sophon-config` is an
   old clone with uncommitted changes, not the source: don't read the
@@ -47,7 +47,7 @@
 
 ### Rubies and gems on sophon
 
-- `mise` is on the PATH in an ssh session: sophon-config keeps its `bin`
+- `mise` is on the PATH in an ssh session: windows-dev-config keeps its `bin`
   folder on the user PATH. `mise ls ruby` lists the installed Rubies. If
   `mise` is ever not found, a winget upgrade has dropped the entry; call it
   by full path,

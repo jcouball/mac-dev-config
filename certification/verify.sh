@@ -3,7 +3,7 @@
 # Verify a provisioned machine by its outcomes, not by exit codes.
 #
 # A provisioning script that returns zero has proved nothing. The failure that
-# justified certifying sophon-config was a script that ran before its own config
+# justified certifying windows-dev-config was a script that ran before its own config
 # file existed, found nothing to do, and reported "all tools are installed" --
 # true, and completely meaningless. Every check here looks at the machine.
 #

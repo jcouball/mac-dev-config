@@ -1,13 +1,14 @@
-# neuromancer-config
+# mac-dev-config
 
-Configuration for **Neuromancer**, an Apple Silicon Mac used for Ruby, Go and
-JRuby development. Managed with [chezmoi](https://chezmoi.io).
+Configuration for two Macs, **Neuromancer** and **cortex**, used for Ruby, Go
+and JRuby development. Managed with [chezmoi](https://chezmoi.io).
 
-Companion to [jcouball/sophon-config](https://github.com/jcouball/sophon-config)
-(Windows 11). This repo is scoped to one machine deliberately: no OS templating,
-every file is simply the file. The cost is that `.gitconfig`, `.tool-versions`
-and `topgrade.toml` now exist in two repos and will drift; the benefit is that
-nothing here needs a conditional.
+Companion to [jcouball/windows-dev-config](https://github.com/jcouball/windows-dev-config)
+(Windows 11) and [jcouball/ubuntu-dev-config](https://github.com/jcouball/ubuntu-dev-config)
+(Ubuntu). This repo is scoped to one operating system deliberately: no OS
+templating, every file is simply the file. The cost is that `.gitconfig`,
+`.tool-versions` and `topgrade.toml` now exist in more than one repo and will
+drift; the benefit is that nothing here needs a conditional.
 
 | | |
 | --- | --- |
@@ -55,7 +56,7 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install chezmoi
 
 # 3. Everything else.
-chezmoi init --apply jcouball/neuromancer-config
+chezmoi init --apply jcouball/mac-dev-config
 ```
 
 Step 3 asks one question — what this machine is called — and then does the rest:
@@ -94,7 +95,7 @@ always what was last pushed. The bootstrap also stops depending on a script this
 repo hosts: the only `curl` left points at Homebrew's own installer, which is
 their problem to keep working, not yours.
 
-It also matches [sophon-config](https://github.com/jcouball/sophon-config),
+It also matches [windows-dev-config](https://github.com/jcouball/windows-dev-config),
 whose bootstrap is the same shape — install chezmoi, then `chezmoi init --apply`
 — so the two repos are rebuilt the same way on both platforms.
 
@@ -441,21 +442,23 @@ that is the entire argument of [Certification](#certification), and it is why
 pinned, and are never upgraded by a command that also upgrades your browser.
 When adding something new, that question decides which layer owns it.
 
-### Why `neuromancer-config` and not `dotfiles`
+### Why `mac-dev-config` and not `dotfiles`
 
 "dotfiles" names the mechanism, not the scope, and it is only half true here:
 plenty of what this repo manages is not dot-prefixed, and plenty of it is not a
 file at all — the computer name, the runtimes asdf materialises, the JDK link.
-`neuromancer-config` leads with the scope (the machine), matches
-`sophon-config` so the pair reads as one system, and stays tool-agnostic, so it
-survives if chezmoi is ever replaced.
+`mac-dev-config` names the operating system and the role, not a host, because
+the repo configures more than one Mac. It matches `windows-dev-config` and
+`ubuntu-dev-config` so the three read as one system, and it stays
+tool-agnostic, so it survives if chezmoi is ever replaced.
 
-The old name still redirects for `git clone` and for web traffic. **The
-`raw.githubusercontent.com` URL in the bootstrap one-liner is the part that
-matters**, though, and it is served by a different, heavily-cached host whose
-behaviour on renamed repositories GitHub does not document.
+The repo was first called `dotfiles`. That name still redirects for
+`git clone` and for web traffic. **The `raw.githubusercontent.com` URL in the
+bootstrap one-liner of the time was the part that mattered**, though, and it
+is served by a different, heavily-cached host whose behaviour on renamed
+repositories GitHub does not document.
 
-Measured immediately after the rename, the old raw URL returned `200`:
+Measured immediately after that rename, the old raw URL returned `200`:
 
 ```console
 $ curl -fsIL -o /dev/null -w '%{http_code}\n' \
@@ -489,7 +492,7 @@ emergency.
 ### How the layers call each other
 
 ```text
-        github.com/jcouball/neuromancer-config
+        github.com/jcouball/mac-dev-config
                        │
                        │  chezmoi update
                        ▼
@@ -660,8 +663,8 @@ command at the top.
    `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`,
    then `brew install chezmoi gh`, then `gh auth login`. Neither will be on
    `PATH` in an already-running shell — start a new terminal.
-2. **Create the repo.** `gh repo create jcouball/neuromancer-config --public`
-3. **Initialise.** `chezmoi init jcouball/neuromancer-config`
+2. **Create the repo.** `gh repo create jcouball/mac-dev-config --public`
+3. **Initialise.** `chezmoi init jcouball/mac-dev-config`
 4. **Set line endings before the first commit.** `chezmoi cd`, then write
    `.gitattributes` containing `* text=auto eol=lf`.
 5. **Capture the package set.** `brew bundle dump --global --force`,
@@ -991,7 +994,7 @@ tart set neuromancer-base --cpu 6 --memory 8192 \
                           --display 1280x800 --display-refit
 
 ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_neuromancer_certvm \
-  -C 'neuromancer-config certification VM'
+  -C 'mac-dev-config certification VM'
 
 tart run neuromancer-base
 ```
@@ -1088,7 +1091,7 @@ before it will unlock. A rebuild using secret templates is three steps:
 ```bash
 brew install --cask 1password 1password-cli
 op signin
-chezmoi init --apply jcouball/neuromancer-config
+chezmoi init --apply jcouball/mac-dev-config
 ```
 
 Worth weighing against keeping secret-bearing files out entirely, which keeps
