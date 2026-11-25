@@ -36,7 +36,7 @@ they are cloned into. Issues that span more than one of them are filed there.
   - [The stack](#the-stack) — the layers, and who owns what
   - [Repository layout](#repository-layout) — every file, and two path traps
   - [Which shell](#which-shell)
-  - [Remote access over SSH](#remote-access-over-ssh) — key-only logins from the LAN
+  - [Remote access over SSH](#remote-access-over-ssh) — key-only logins from the LAN and the tailnet
   - [Recreating this repo from scratch](#recreating-this-repo-from-scratch) — not the machine
   - [How often to run what](#how-often-to-run-what)
 - **Why it is the way it is**
@@ -827,7 +827,7 @@ the runtimes exist, so an unguarded `eval "$(brew shellenv)"` or
 ## Remote access over SSH
 
 Each Mac can be reached over ssh from the other, and from any machine on the
-LAN that holds its key. A session logs in as `james`, an administrator, so a
+LAN or the tailnet that holds its key. A session logs in as `james`, an administrator, so a
 login is close to full control of the machine. Three things limit who gets one,
 the same three [ubuntu-dev-config](https://github.com/jcouball/ubuntu-dev-config)
 and [windows-dev-config](https://github.com/jcouball/windows-dev-config) use:
@@ -839,12 +839,26 @@ and [windows-dev-config](https://github.com/jcouball/windows-dev-config) use:
   [private_dot_ssh/private_authorized_keys.tmpl](private_dot_ssh/private_authorized_keys.tmpl).
   Each line must start with `restrict` or `restrict,pty`; script 07 fails the
   apply on any other.
-- **LAN only.** macOS has no ufw, so sshd does this itself: `AllowUsers` admits
-  `james` from `192.168.0.0/16` and nobody else. The addresses are IPv4, so a
+- **LAN and tailnet only.** macOS has no ufw, so sshd does this itself:
+  `AllowUsers` admits `james` from `192.168.0.0/16`, the LAN, and from
+  `100.64.0.0/10`, the tailnet, and nobody else. The addresses are IPv4, so a
   login over IPv6 is refused. The `Host` blocks in
   [private_dot_ssh/private_config](private_dot_ssh/private_config) set
-  `AddressFamily inet` for that reason: a `.local` name also resolves to IPv6
-  link-local addresses.
+  `AddressFamily inet` for that reason: a `.local` name and a tailnet name both
+  resolve to an IPv6 address as well.
+
+**The tailnet is the Tailscale network the machines are signed in to.** Each
+has an address in `100.64.0.0/10` and a name there: `cortex`, `sophon`, `rama`.
+The `Host` blocks for cortex and sophon use those names, so `ssh cortex` works
+from anywhere Neuromancer has a network.
+
+- **It needs Tailscale running at both ends,** on the LAN too. With it off at
+  either end, name the LAN address: `ssh -o HostName=cortex.local cortex`.
+- **`100.64.0.0/10` is not Tailscale's alone.** Carriers use it for shared
+  addresses. On a network that hands those out, a neighbour's login gets as
+  far as the key check, which is where a login from the LAN gets.
+- **Nothing in this repo installs Tailscale or signs it in.** That was done by
+  hand on each machine.
 
 Forwarding is off: `DisableForwarding yes` covers ports, the agent, X11, and
 tunnels, and no key option can turn it back on. Use `scp` or `sftp` to move
@@ -877,10 +891,12 @@ on a Mac the entry admits nobody.
 
 FileVault is on, so after a restart the disk stays locked until someone enters
 the account password. Until then a key login is refused. The Mac can be
-unlocked over ssh, from a terminal:
+unlocked over ssh, from a terminal on the LAN. Tailscale's app starts when
+someone logs in at the desktop, so a Mac that has just restarted is not on the
+tailnet, and the `.local` name has to be given:
 
 ```text
-$ ssh cortex
+$ ssh -o HostName=cortex.local cortex
 This system is locked. To unlock it, use a local
 account name and password. Once successfully
 unlocked, you will be able to connect normally.
@@ -890,7 +906,8 @@ You may now use SSH to authenticate normally.
 ```
 
 Type the Mac account password. The session does not return after the last
-line: press Ctrl-C and run `ssh cortex` again, which logs in with the key.
+line: press Ctrl-C and run the same command again, which logs in with the key.
+`ssh cortex` works once someone has logged in at the desktop.
 
 - **The password unlocks the disk and opens no session.** This is the one
   prompt the keys-only setting does not cover.
@@ -930,7 +947,7 @@ elsewhere.
 
 ```text
 Host cortex
-  HostName cortex.local
+  HostName cortex
   User james
   IdentityFile ~/.ssh/id_ed25519_cortex
   IdentitiesOnly yes
