@@ -559,15 +559,16 @@ if sudo -n true 2>/dev/null; then
     'disableforwarding yes' \
     'authorizedkeysfile .ssh/authorized_keys' \
     'allowusers james@192.168.0.0/16' \
+    'allowusers james@100.64.0.0/10' \
     'allowusers certuser@192.168.64.0/24'; do
     printf '%s\n' "$effective" | grep -qxF "$want" || wrong="$wrong [$want]"
   done
   allow_n="$(printf '%s\n' "$effective" | grep -c '^allowusers ' || true)"
-  [ "$allow_n" -eq 2 ] || wrong="$wrong [two allowusers entries, not $allow_n]"
+  [ "$allow_n" -eq 3 ] || wrong="$wrong [three allowusers entries, not $allow_n]"
   if [ -z "$effective" ]; then
     bad "sshd -T printed nothing" "the configuration may not parse: sudo sshd -t"
   elif [ -z "$wrong" ]; then
-    ok "sshd accepts public keys only, from the LAN, with root login and forwarding off"
+    ok "sshd accepts public keys only, from the LAN and the tailnet, with root login and forwarding off"
   else
     bad "sshd's effective settings are missing:$wrong"
   fi

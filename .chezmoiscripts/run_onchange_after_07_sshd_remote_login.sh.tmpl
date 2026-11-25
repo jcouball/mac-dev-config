@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Restrict sshd to key logins from the LAN, then turn Remote Login on.
+# Restrict sshd to key logins from the LAN and the tailnet, then turn Remote
+# Login on.
 #
 # macOS ships with Remote Login off, and its sshd accepts the account
 # password. A session logs in as an administrator, so this script installs
@@ -195,12 +196,13 @@ for want in \
   'disableforwarding yes' \
   'authorizedkeysfile .ssh/authorized_keys' \
   'allowusers james@192.168.0.0/16' \
+  'allowusers james@100.64.0.0/10' \
   'allowusers certuser@192.168.64.0/24'; do
   grep -qixF "$want" <<<"$effective" || wrong+=("$want")
 done
 allow_count="$(grep -ci '^allowusers ' <<<"$effective" || true)"
-if [ "$allow_count" -ne 2 ]; then
-  wrong+=("exactly two allowusers entries (sshd reports $allow_count)")
+if [ "$allow_count" -ne 3 ]; then
+  wrong+=("exactly three allowusers entries (sshd reports $allow_count)")
 fi
 if [ "${#wrong[@]}" -gt 0 ]; then
   echo "❌ sshd does not report these settings with the drop-in installed:" >&2
@@ -211,7 +213,7 @@ fi
 
 unchecked=false
 
-echo ">> sshd accepts public keys only, from the LAN, with forwarding off."
+echo ">> sshd accepts public keys only, from the LAN and the tailnet, with forwarding off."
 
 # Remote Login. `launchctl print` finds the service only when it is loaded,
 # which is what "on" means: launchd is listening on port 22. `enable` clears

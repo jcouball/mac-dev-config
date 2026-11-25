@@ -1,12 +1,16 @@
 Host sophon
-  HostName 192.168.0.199
+  # The name sophon has on the tailnet, so this works away from the LAN. It
+  # needs Tailscale running here and on sophon. Without it, from the LAN:
+  # ssh -o HostName=192.168.0.199 sophon
+  HostName sophon
   User james
   IdentityFile ~/.ssh/id_ed25519_sophon
   IdentitiesOnly yes
   StrictHostKeyChecking accept-new
   ForwardAgent no
   # sophon runs OpenSSH for Windows 9.5, which offers no post-quantum key
-  # exchange. Accepted on the LAN; this silences only that warning.
+  # exchange. Accepted on the LAN and the tailnet; this silences only that
+  # warning.
   WarnWeakCrypto no-pq-kex
   UseKeychain yes
   AddKeysToAgent yes
@@ -33,8 +37,8 @@ Host neuromancer
   IdentitiesOnly yes
   StrictHostKeyChecking accept-new
   ForwardAgent no
-  # sshd on the Macs admits IPv4 addresses on the LAN only (sshd-mac.conf), and
-  # a .local name also resolves to IPv6 link-local addresses.
+  # sshd on the Macs admits IPv4 addresses only (sshd-mac.conf), and a .local
+  # name also resolves to IPv6 link-local addresses.
   AddressFamily inet
   UseKeychain yes
   AddKeysToAgent yes
@@ -43,13 +47,16 @@ Host neuromancer
   ControlPersist 10m
 
 Host cortex
-  HostName cortex.local
+  # The name cortex has on the tailnet, so this works away from the LAN. It
+  # needs Tailscale running here and on cortex. Without it, from the LAN:
+  # ssh -o HostName=cortex.local cortex
+  HostName cortex
   User james
   IdentityFile ~/.ssh/id_ed25519_cortex
   IdentitiesOnly yes
   StrictHostKeyChecking accept-new
   ForwardAgent no
-  # As for neuromancer: IPv4 only.
+  # As for neuromancer: IPv4 only. A tailnet name has an IPv6 address too.
   AddressFamily inet
   UseKeychain yes
   AddKeysToAgent yes
