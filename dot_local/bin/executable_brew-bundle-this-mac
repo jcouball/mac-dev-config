@@ -1,0 +1,38 @@
+#!/bin/bash
+#
+# Run `brew bundle` for this Mac: with the one Tailscale entry it does not run
+# left out.
+#
+# .Brewfile declares Tailscale twice, `brew "tailscale"` and
+# `cask "tailscale-app"`, and a Mac runs one of the two: the app on a MacBook,
+# the daemon on a Mac with no battery. Script 09 says why. A plain
+# `brew bundle` installs both. On a MacBook that adds a `tailscale` command
+# that warns about its version on every call. On a Mac with no battery it puts
+# back the app, and script 09 stops the next apply.
+#
+# Use this wherever `brew bundle` would install or check:
+#
+#   brew-bundle-this-mac --file="$HOME/.Brewfile"
+#   brew-bundle-this-mac check --file="$HOME/.Brewfile" --verbose
+#
+# The arguments go to `brew bundle` as given. Scripts 02 and 99 call it, so
+# the rule is written here once. verify.sh has its own copy on purpose: it
+# audits what this script did and does not trust it.
+#
+# The entry is ADDED to a skip list that is already set, not put in its place.
+# certify.sh sets HOMEBREW_BUNDLE_CASK_SKIP=zoom for the VM, where Zoom's
+# installer hangs, and that has to survive.
+#
+# `brew bundle dump` is not for this script: a dump skips nothing.
+
+set -euo pipefail
+
+BREW="$(command -v brew || echo /opt/homebrew/bin/brew)"
+
+if pmset -g ps | grep -q "InternalBattery"; then
+  export HOMEBREW_BUNDLE_BREW_SKIP="${HOMEBREW_BUNDLE_BREW_SKIP:+$HOMEBREW_BUNDLE_BREW_SKIP }tailscale"
+else
+  export HOMEBREW_BUNDLE_CASK_SKIP="${HOMEBREW_BUNDLE_CASK_SKIP:+$HOMEBREW_BUNDLE_CASK_SKIP }tailscale-app"
+fi
+
+exec "$BREW" bundle "$@"

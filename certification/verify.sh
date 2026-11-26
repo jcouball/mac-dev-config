@@ -79,6 +79,22 @@ for skip_name in $(compgen -A variable HOMEBREW_BUNDLE_); do
   esac
 done
 
+# The second skip this script sets itself. .Brewfile declares Tailscale twice,
+# and a Mac runs one of the two: the app on a MacBook, the daemon on a Mac with
+# no battery, which is what the certification VM is. The entry this Mac does
+# not run is left out of `brew bundle check`, as brew-bundle-this-mac leaves it
+# out for scripts 02 and 99. The rule is written again here and that script is
+# not called: this is the audit of what it did. Nothing is reported as
+# excluded, because nothing goes unchecked: the Tailscale section below fails
+# if the variant left out is installed.
+if pmset -g ps 2>/dev/null | grep -q "InternalBattery"; then
+  TAILSCALE_VARIANT=app
+  export HOMEBREW_BUNDLE_BREW_SKIP="tailscale"
+else
+  TAILSCALE_VARIANT=daemon
+  export HOMEBREW_BUNDLE_CASK_SKIP="tailscale-app"
+fi
+
 # --- Foundations -----------------------------------------------------------
 
 section "Foundations"
@@ -600,6 +616,94 @@ if [ -f "$keys_file" ]; then
   fi
 else
   bad "~/.ssh/authorized_keys missing" "chezmoi writes it from private_authorized_keys.tmpl"
+fi
+
+# --- Tailscale -------------------------------------------------------------
+
+section "Tailscale"
+
+ts_plist=/Library/LaunchDaemons/com.tailscale.tailscaled.plist
+ts_daemon=/usr/local/bin/tailscaled
+ts_formula=/opt/homebrew/opt/tailscale/bin
+
+for want in 'brew "tailscale"' 'cask "tailscale-app"'; do
+  if [ -f "$BREWFILE" ] && grep -qxF "$want" "$BREWFILE"; then
+    ok "~/.Brewfile declares $want"
+  else
+    bad "~/.Brewfile does not declare $want" "a 'brew bundle dump' drops the entry this Mac does not run; put it back"
+  fi
+done
+
+if [ "$TAILSCALE_VARIANT" = app ]; then
+  # The app itself is a Brewfile entry, and the check above covers it.
+  if [ -e "$ts_plist" ] || launchctl print system/com.tailscale.tailscaled >/dev/null 2>&1 \
+     || launchctl print system/sh.brew.tailscale >/dev/null 2>&1; then
+    bad "the Tailscale daemon is installed on a Mac that runs the app" "sudo tailscaled uninstall-system-daemon"
+  else
+    ok "this Mac runs the Tailscale app, and no daemon is installed"
+  fi
+
+  # The formula is left out of `brew bundle check` here, so nothing else would
+  # notice it. opt/<name> is the link Homebrew keeps for an installed formula.
+  if [ -e "$ts_formula" ]; then
+    bad "the tailscale formula is installed on a Mac that runs the app" "brew uninstall --formula tailscale"
+  else
+    ok "the tailscale formula is not installed"
+  fi
+else
+  if [ -d /Applications/Tailscale.app ]; then
+    bad "Tailscale.app is installed on a Mac that runs the daemon" "brew uninstall --cask tailscale-app, then restart"
+  else
+    ok "this Mac runs the Tailscale daemon, and the app is not installed"
+  fi
+
+  # launchd keeps a job after its process has exited, so having the job is
+  # not enough: it has to be running.
+  ts_job="$(launchctl print system/com.tailscale.tailscaled 2>/dev/null || true)"
+  if [ -z "$ts_job" ]; then
+    bad "launchd does not have com.tailscale.tailscaled" "script 09 installs it"
+  elif printf '%s\n' "$ts_job" | grep -q '^[[:space:]]*state = running'; then
+    ok "launchd has com.tailscale.tailscaled, and it is running"
+  else
+    bad "launchd has com.tailscale.tailscaled, and it is not running" "launchctl print system/com.tailscale.tailscaled"
+  fi
+
+  if launchctl print system/sh.brew.tailscale >/dev/null 2>&1; then
+    bad "the daemon is running under brew services" "script 09 says how to move it"
+  fi
+
+  ts_have="$("$ts_daemon" --version 2>/dev/null | head -1)"
+  ts_want="$("$ts_formula/tailscaled" --version 2>/dev/null | head -1)"
+  if [ -n "$ts_want" ] && [ "$ts_have" = "$ts_want" ]; then
+    ok "$ts_daemon is version $ts_want, the formula's"
+  else
+    bad "$ts_daemon is version '${ts_have:-missing}', and the formula is '${ts_want:-missing}'" "script 09 copies it on the next apply"
+  fi
+
+  # Signing in needs a person and a browser, so no rebuild does it. A VM is
+  # never signed in, and NeedsLogin is the one state excluded there. No answer,
+  # or any other state, is a daemon that is not working, and fails everywhere.
+  ts_state="$("$ts_formula/tailscale" status --json 2>/dev/null \
+               | sed -n 's/^[[:space:]]*"BackendState":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  case "$ts_state" in
+    Running)
+      ok "Tailscale is signed in and running"
+      ;;
+    NeedsLogin)
+      if [ "$SKIP_MAS" = "1" ]; then
+        excluded "Tailscale is not signed in" \
+                 "signing in needs a person and a browser -- verify on real hardware"
+      else
+        bad "Tailscale is not signed in" "sudo tailscale up"
+      fi
+      ;;
+    "")
+      bad "the Tailscale daemon does not answer 'tailscale status'" "launchctl print system/com.tailscale.tailscaled"
+      ;;
+    *)
+      bad "Tailscale is in state '$ts_state', not Running" "sudo tailscale up"
+      ;;
+  esac
 fi
 
 # --- Summary ---------------------------------------------------------------

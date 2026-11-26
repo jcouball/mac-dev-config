@@ -20,7 +20,7 @@ they are cloned into. Issues that span more than one of them are filed there.
 | | cortex — Apple M4, macOS Golden Gate 27.2.1 |
 | Shell | zsh + powerlevel10k |
 | Terminal | Warp (installed by `.Brewfile`; its settings are not managed here) |
-| Package manager | Homebrew — 83 formulae, 39 casks, 49 VS Code extensions, 14 App Store apps |
+| Package manager | Homebrew — 84 formulae, 40 casks, 49 VS Code extensions, 14 App Store apps |
 | Runtimes | asdf, 5 tools |
 | Rebuild | **certified** 2026-11-21 on a clean VM, except the App Store layer |
 
@@ -79,7 +79,7 @@ do with this repo.
 **Sign in to iCloud and the App Store first**, if you want the App Store apps.
 They are separate sign-ins and only the second satisfies `mas`. Skipping it
 costs nothing else: the run completes, and the 14 App Store entries can be
-picked up later with `brew bundle --file="$HOME/.Brewfile"`.
+picked up later with `brew-bundle-this-mac --file="$HOME/.Brewfile"`.
 
 Afterwards, by hand — the parts a script cannot do:
 
@@ -96,6 +96,8 @@ Afterwards, by hand — the parts a script cannot do:
    logins at once, because its public key is in this repo. To log in to the
    other machines it needs their private keys from 1Password — see
    [Set up a client](#set-up-a-client).
+5. **Sign in to Tailscale.** The rebuild installs it, and the Mac is not on
+   the tailnet until someone signs in — see [Tailscale](#tailscale).
 
 ### Why three commands and not one
 
@@ -148,6 +150,12 @@ chezmoi re-add ~/.Brewfile
 the snapshot and the machine cannot disagree. The descriptive comment above each
 entry — most of what makes that file readable — is included by default now;
 `--describe` still works but is deprecated.
+
+**A dump drops one Tailscale entry.** The Brewfile declares `brew "tailscale"`
+and `cask "tailscale-app"`, and each Mac installs one of them: see
+[Tailscale](#tailscale). A dump writes what is installed, so it leaves the
+other out. Put the line back before `chezmoi re-add`. Script 99 fails the next
+apply while either line is missing, and names it.
 
 #### Uninstall an application
 
@@ -691,7 +699,7 @@ sshd-mac.conf                      sshd settings; script 07 installs it (ignored
 .githooks/pre-commit               stops a commit on main or stable
 .githooks/pre-push                 stops a push to stable of a commit that was not certified
 
-dot_Brewfile                       83 formulae, 39 casks, 49 extensions, 14 App Store apps
+dot_Brewfile                       84 formulae, 40 casks, 49 extensions, 14 App Store apps
 dot_tool-versions                  the five pinned runtimes
 dot_default-npm-packages           replayed on every new Node install
 dot_asdfrc                         asdf behaviour
@@ -711,6 +719,7 @@ dot_config/topgrade.toml           update policy
 dot_homebrew/brew.env              HOMEBREW_NO_ANALYTICS
 dot_pip/pip.conf
 dot_local/bin/executable_clear-warp-quarantine   clears Homebrew's quarantine flag from Warp
+dot_local/bin/executable_brew-bundle-this-mac    `brew bundle`, without the Tailscale entry this Mac does not run
 empty_dot_irbrc
 
 dot_claude/settings.json           Claude Code: plugins, model, permission mode
@@ -725,6 +734,7 @@ dot_claude/CLAUDE.md               Claude Code: global communication preferences
   run_onchange_after_06_install_amphetamine_power_protect.sh.tmpl  Amphetamine Power Protect, laptops only
   run_onchange_after_07_sshd_remote_login.sh.tmpl                  key-only sshd, then Remote Login on
   run_after_08_git_hooks_path.sh.tmpl                              points the source's git at .githooks
+  run_after_09_tailscale_daemon.sh                                 the Tailscale daemon, on a Mac with no battery
   run_after_99_brew_bundle_check.sh                                fails the apply if a .Brewfile entry is missing
 
 certification/
@@ -857,8 +867,8 @@ from anywhere Neuromancer has a network.
 - **`100.64.0.0/10` is not Tailscale's alone.** Carriers use it for shared
   addresses. On a network that hands those out, a neighbour's login gets as
   far as the key check, which is where a login from the LAN gets.
-- **Nothing in this repo installs Tailscale or signs it in.** That was done by
-  hand on each machine.
+- **This repo installs Tailscale and does not sign it in.**
+  [Tailscale](#tailscale) has both halves.
 
 Forwarding is off: `DisableForwarding yes` covers ports, the agent, X11, and
 tunnels, and no key option can turn it back on. Use `scp` or `sftp` to move
@@ -891,9 +901,9 @@ on a Mac the entry admits nobody.
 
 FileVault is on, so after a restart the disk stays locked until someone enters
 the account password. Until then a key login is refused. The Mac can be
-unlocked over ssh, from a terminal on the LAN. Tailscale's app starts when
-someone logs in at the desktop, so a Mac that has just restarted is not on the
-tailnet, and the `.local` name has to be given:
+unlocked over ssh, from a terminal on the LAN. Nothing on the Mac runs while
+the disk is locked, Tailscale included, so it is not on the tailnet and the
+`.local` name has to be given:
 
 ```text
 $ ssh -o HostName=cortex.local cortex
@@ -907,7 +917,23 @@ You may now use SSH to authenticate normally.
 
 Type the Mac account password. The session does not return after the last
 line: press Ctrl-C and run the same command again, which logs in with the key.
-`ssh cortex` works once someone has logged in at the desktop.
+
+What brings the Mac back onto the tailnet depends on which Tailscale it runs:
+
+| Mac | Runs | `ssh cortex` by its tailnet name works |
+| --- | --- | --- |
+| no battery (cortex) | the daemon | a minute or two after the unlock, with nobody logged in |
+| MacBook (Neuromancer) | the app | once someone has logged in at the desktop |
+
+**From outside the LAN, unlock through a machine that is on it.** The unlock
+asks for the account password and no key, so the machine in between needs
+nothing of cortex's:
+
+```bash
+ssh -t rama ssh james@cortex.local
+```
+
+Tested from rama on 2026-11-25, with Neuromancer on another network.
 
 - **The password unlocks the disk and opens no session.** This is the one
   prompt the keys-only setting does not cover.
@@ -925,6 +951,86 @@ This is also how to reach cortex after a power cut. It is set to start up when
 power returns ("Start up automatically after a power failure" in System
 Settings, Energy; `pmset -g` shows `autorestart 1`). That setting was made by
 hand and nothing in this repo sets it. Once it has started, unlock it as above.
+
+### Tailscale
+
+The tailnet is what makes the Macs reachable from outside the LAN. Tailscale
+comes two ways on macOS, and which one a Mac runs depends on whether it has a
+battery:
+
+| Mac | Runs | Installed from | Starts |
+| --- | --- | --- | --- |
+| MacBook (Neuromancer) | the app | `cask "tailscale-app"` | when someone logs in at the desktop |
+| no battery (cortex, the certification VM) | the daemon, `tailscaled` | `brew "tailscale"` | at boot |
+
+A Mac with no battery is one that is reached with nobody at it, so it has to
+come back onto the tailnet without a desktop login. The daemon does that. It
+has no menu bar item, cannot use an exit node, and is updated by Homebrew and
+not by itself. A MacBook keeps the app, which has all three.
+
+The Brewfile declares both entries, and a plain `brew bundle` installs both.
+**Use `brew-bundle-this-mac` wherever `brew bundle` would install or check.**
+It is `brew bundle` with the entry this Mac does not run added to Homebrew's
+skip list (`HOMEBREW_BUNDLE_BREW_SKIP` or `HOMEBREW_BUNDLE_CASK_SKIP`), and it
+passes its arguments on:
+
+```bash
+brew-bundle-this-mac --file="$HOME/.Brewfile"
+```
+
+Scripts 02 and 99 run it. `verify.sh` applies the same rule itself, and fails
+if the variant left out is installed, so the skip hides nothing. `brew bundle
+dump` and `brew bundle cleanup` are used as they are: neither installs.
+
+**Script 09 installs the daemon** with `tailscaled install-system-daemon`. That
+copies the binary to `/usr/local/bin/tailscaled`, owned by root, and loads
+`/Library/LaunchDaemons/com.tailscale.tailscaled.plist`.
+
+- **Not `sudo brew services start tailscale`.** That hands the formula's files
+  to root, and the next `brew upgrade` cannot remove them without sudo.
+- **The copy does not follow an upgrade of the formula.** Script 09 runs on
+  every apply, compares the two versions, and installs again when they differ.
+  That restarts the daemon, and a session that came in over the tailnet stalls
+  for the seconds it takes.
+- **launchd does not restart the daemon if it exits.** The plist has no
+  `KeepAlive`. Script 09 installs again when the job is loaded and not running,
+  so an apply brings it back, and so does a restart. Until one of those the Mac
+  is off the tailnet.
+
+**Signing in is done by hand, once for each Mac.** It needs a browser.
+
+- **The daemon:** `sudo tailscale up` prints an address. Open it on any machine
+  and approve the login.
+- **The app:** open Tailscale, approve the VPN configuration and the system
+  extension, sign in, and turn on "Launch at login" in its settings.
+- **Both:** in the [admin console](https://login.tailscale.com/admin/machines),
+  turn off key expiry for the Mac. With it on, the Mac leaves the tailnet after
+  180 days and has to be signed in again at its console.
+
+A Mac that was signed in before a rebuild comes back as a new machine. Delete
+the old entry in the admin console first, or the new one is named `cortex-1`
+and `ssh cortex` reaches nothing.
+
+**To move a Mac from the app to the daemon,** work at its console: the Mac is
+off the tailnet from the first step to the last.
+
+```bash
+brew uninstall --cask tailscale-app
+sudo shutdown -r now
+# after the restart:
+sudo -v && chezmoi apply
+sudo tailscale up
+```
+
+Tailscale's documentation says to remove the app and restart before another
+variant is installed. Script 09 stops the apply while the app is still there.
+
+**To take the daemon off:** `sudo tailscaled uninstall-system-daemon`.
+
+**Check a machine that has restarted with `ssh <name> hostname`, not
+`tailscale ping`.** From the Mac app, `tailscale ping` to a machine that has
+just restarted fails until some other connection is made to it:
+[dev-config#7](https://github.com/jcouball/dev-config/issues/7).
 
 ### Set up a client
 
@@ -1557,6 +1663,9 @@ unreachable objects, so the old commit may remain fetchable by SHA afterwards.
 - **Per-project dependencies.** Gemfiles, `package.json`, project-level
   `.tool-versions`. These belong to their repos.
 - **App Store app *data*.** The apps are declared; their contents are not.
+- **Signing in to Tailscale.** It needs a person and a browser. The repo
+  installs the right variant and starts the daemon:
+  [Tailscale](#tailscale) has the by-hand part.
 - **Anything you'd reinstall in under a minute.** This repo is for what is
   painful to reconstruct, not an inventory.
 
@@ -1592,7 +1701,7 @@ unreachable objects, so the old commit may remain fetchable by SHA afterwards.
   after each topgrade run; it prints a line when it removes the flag or leaves
   one in place, and nothing when Warp is not quarantined. After any other
   install or upgrade (`brew upgrade --cask warp`, `brew reinstall --cask warp`,
-  `brew bundle --file="$HOME/.Brewfile"` with `HOMEBREW_BUNDLE_NO_UPGRADE`
+  `brew-bundle-this-mac --file="$HOME/.Brewfile"` with `HOMEBREW_BUNDLE_NO_UPGRADE`
   unset, or a topgrade run interrupted before its post commands), run it by
   hand. `verify.sh` warns if Warp is still quarantined.
 
