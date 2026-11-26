@@ -74,8 +74,8 @@ fi
 # owns declaration -- and mixing the two means you can never apply a config
 # change without also accepting whatever else happens to be outdated that day.
 #
-# To upgrade deliberately: `topgrade`, or `brew bundle --file="$HOME/.Brewfile"`
-# with this variable unset.
+# To upgrade deliberately: `topgrade`, or
+# `brew-bundle-this-mac --file="$HOME/.Brewfile"` with this variable unset.
 export HOMEBREW_BUNDLE_NO_UPGRADE=1
 
 BREWFILE="$HOME/.Brewfile"
@@ -89,6 +89,12 @@ BREWFILE="$HOME/.Brewfile"
 # the Brewfile means there is no second list to drift out of sync.
 mas_ids=$(awk -F'id:' '/^mas /{gsub(/[^0-9]/, "", $2); if ($2 != "") print $2}' "$BREWFILE" | tr '\n' ' ')
 mas_count=$(printf '%s' "$mas_ids" | wc -w | tr -d ' ')
+
+# `brew bundle` is run through brew-bundle-this-mac, which leaves out the one
+# Tailscale entry this Mac does not run. .Brewfile declares both, and script 09
+# says why. chezmoi has written the script by now: this is an after_ script.
+BUNDLE="$HOME/.local/bin/brew-bundle-this-mac"
+[ -x "$BUNDLE" ] || { echo "❌ $BUNDLE not found or not executable." >&2; exit 1; }
 
 # Pass 1: taps, formulae, casks and VS Code extensions.
 #
@@ -114,7 +120,7 @@ mas_count=$(printf '%s' "$mas_ids" | wc -w | tr -d ' ')
 trap '"$HOME/.local/bin/clear-warp-quarantine" || true' EXIT
 
 echo ">> Installing from Brewfile (excluding $mas_count Mac App Store apps)..."
-if HOMEBREW_BUNDLE_MAS_SKIP="$mas_ids" brew bundle --file="$BREWFILE"; then
+if HOMEBREW_BUNDLE_MAS_SKIP="$mas_ids" "$BUNDLE" --file="$BREWFILE"; then
   echo ">> Brewfile installed."
 else
   # Retry once, serially.
@@ -131,7 +137,7 @@ else
   # genuinely will not install here -- rather than two installers tripping over
   # each other. This also covers the ordinary case of a flaky download.
   echo "!! Some Brewfile entries failed. Retrying serially..." >&2
-  if HOMEBREW_BUNDLE_MAS_SKIP="$mas_ids" HOMEBREW_BUNDLE_JOBS=1      brew bundle --file="$BREWFILE"; then
+  if HOMEBREW_BUNDLE_MAS_SKIP="$mas_ids" HOMEBREW_BUNDLE_JOBS=1 "$BUNDLE" --file="$BREWFILE"; then
     echo ">> Brewfile installed on the serial retry."
   else
     echo "!! Some Brewfile entries failed twice." >&2
@@ -158,12 +164,12 @@ if [ "$mas_count" -eq 0 ]; then
 fi
 
 echo ">> Installing $mas_count Mac App Store apps..."
-if brew bundle --file="$BREWFILE"; then
+if "$BUNDLE" --file="$BREWFILE"; then
   echo ">> Mac App Store apps installed."
 else
   echo "!! Some Mac App Store apps did not install." >&2
   echo "!! Usually this means the App Store is not signed in. Sign in, then:" >&2
-  echo "!!   brew bundle --file=\"\$HOME/.Brewfile\"" >&2
+  echo "!!   brew-bundle-this-mac --file=\"\$HOME/.Brewfile\"" >&2
   echo "!! Inside a VM this is expected and cannot be fixed -- see the" >&2
   echo "!! Certification section of the README." >&2
 fi

@@ -143,7 +143,7 @@ vm_exists() {
 # --- Preflight -------------------------------------------------------------
 
 command -v tart >/dev/null 2>&1 \
-  || die "tart not found. It is declared in .Brewfile: brew bundle --global"
+  || die "tart not found. It is declared in .Brewfile: brew-bundle-this-mac --global"
 
 [ -f "$CERT_SSH_KEY" ] \
   || die "No certification SSH key at $CERT_SSH_KEY.

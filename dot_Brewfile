@@ -152,6 +152,8 @@ brew "ripgrep"
 brew "skopeo"
 # Tool to impose load on and stress test a computer system
 brew "stress"
+# Easiest, most secure way to use WireGuard and 2FA
+brew "tailscale"
 # Upgrade all the things
 brew "topgrade"
 # Display directories as trees (with optional color/HTML output)
@@ -238,6 +240,8 @@ cask "silnite"
 cask "slack"
 # Sync and backup service to Synology NAS drives
 cask "synology-drive"
+# Mesh VPN based on WireGuard
+cask "tailscale-app"
 # Desktop client for Telegram messenger
 cask "telegram-desktop"
 # Customizable email client
