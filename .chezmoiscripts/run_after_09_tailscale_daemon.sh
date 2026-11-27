@@ -36,8 +36,9 @@
 # to install, and prints nothing when there is nothing to do.
 #
 # SIGNING IN IS NOT DONE HERE. It needs a person and a browser:
-# `sudo tailscale up`. The script says so while the Mac is signed out, and does
-# not fail the apply over it.
+# `sudo tailscale up`. The script says so while the Mac is signed out, says
+# when Tailscale is disconnected or in some other state, and does not fail the
+# apply over any of those.
 
 set -euo pipefail
 
@@ -145,16 +146,25 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
 done
 
 # Running and silent for 15 seconds is a daemon that is not working, and the
-# Mac is off the tailnet. That fails the apply. Signed out, below, does not.
+# Mac is off the tailnet. That fails the apply. The states below do not.
 if [ -z "$state" ]; then
   echo "❌ The Tailscale daemon is running and does not answer 'tailscale status'." >&2
   echo "   Look at:  launchctl print system/$LABEL" >&2
   exit 1
 fi
 
-if [ "$state" != "Running" ]; then
-  echo "!! Tailscale is not signed in on this Mac (state: ${state})." >&2
+# Only NeedsLogin means nobody is signed in. Stopped is a Mac that was
+# disconnected, with `tailscale down`, and connects again with no browser.
+# Anything else, such as Starting, is said as it is, with no advice.
+if [ "$state" = "NeedsLogin" ]; then
+  echo "!! Tailscale is not signed in on this Mac." >&2
   echo "!! Sign in, and approve the address it prints in a browser:" >&2
   echo "!!   sudo tailscale up" >&2
   echo "!! Then turn off key expiry for this Mac in the admin console." >&2
+elif [ "$state" = "Stopped" ]; then
+  echo "!! Tailscale is disconnected on this Mac, so it is off the tailnet." >&2
+  echo "!! Connect it:  sudo tailscale up" >&2
+elif [ "$state" != "Running" ]; then
+  echo "!! Tailscale is in state '${state}', not Running." >&2
+  echo "!! If it stays there, look at:  tailscale status" >&2
 fi
